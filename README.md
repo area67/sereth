@@ -1,4 +1,4 @@
-## Go Ethereum
+## Sereth - Serialized Transactions for Ethereum Smart Contracts (a fork of Geth Client)
 
 Official golang implementation of the Ethereum protocol.
 
