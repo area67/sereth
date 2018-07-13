@@ -1,8 +1,8 @@
 ## Sereth - Serialized Transactions for Ethereum Smart Contracts
 
-Sereth "Serialized Ethereum" is a fork of the official Golang implementation of the Ethereum protocol that proivdes strict serialization of transactions.  
+Sereth "Serialized Ethereum" is a fork of the official Golang implementation of the Ethereum protocol modified to provide strict serialization of transactions within a block.  We accomplish this by accessing the transaction pool and using a novel technique called Runtime Argument Augmentation (RAA).  
 
-Our goal is to contribute to Ethereum and expand use cases for smart contracts.  Our process, inspired by Charles Hoskinson,  is to apply concepts and tools from academic computer science to problems faced by blockchain developers.  
+Our goal is to contribute to Ethereum and expand use cases for smart contracts, while remaining true to the original protocol.  Our process, inspired by Charles Hoskinson, is to apply concepts and tools from academic computer science to problems faced by blockchain developers.  
 
 This repo is a working proof of concept for a paper submitted to OPODOS https://opodis2018.comp.polyu.edu.hk/index.html   The work in progress gained impetus from a keynote address by Marice Herlihy, one of many authors cited in the paper.  Special thanks to Raul who had some helpful hints on modifying Geth client.
 
