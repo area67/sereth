@@ -143,8 +143,17 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
           // TODO:  The Tuple function should take the filter address as an input, which needs to be one of the args for RAA to work properly,
           //        since we dont know this at compile time!
 		var tuple [][]byte = Tuple(in.evm.txP)
-		_, ferr = f.WriteString("Tuple: ")
-		_, ferr = f.WriteString(fmt.Sprintf("%s\n", tuple[1]))
+
+		_, ferr = f.WriteString("Tuple:\n")
+
+		if tuple[1] == nil {
+			_, ferr = f.WriteString(fmt.Sprintf("Tuple is empty, there are no pending transactions\n"))
+		} else {
+			_, ferr = f.WriteString(fmt.Sprintf("Address: %s\n", tuple[0]))
+			_, ferr = f.WriteString(fmt.Sprintf("Mark: %s\n", tuple[1]))
+			_, ferr = f.WriteString(fmt.Sprintf("Val: %s\n", tuple[2]))
+
+		}
            //_, ferr = f.WriteString(Tuple(in.evm.txP))
 
           // Add tuple to input arguments (RAA step)

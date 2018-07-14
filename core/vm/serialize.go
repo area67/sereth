@@ -249,6 +249,8 @@ func parseTransactions(txns []*RPCTransaction) []TransactionObject {
 		}
 	}
 
+	f.Close()
+
 	//Return a slice the length of filtered values we obtained
 	return inputArray[0:k]
 }
@@ -293,6 +295,11 @@ func findDeepestBranch(head *TransactionObject, depth int, maxDepth *int, path, 
 
 func Tuple(txP ContentFetcher) [][]byte {
         var buffer bytes.Buffer
+
+	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            log.Fatal("Cannot open file", ferr)
+        }
 
 	content := map[string]map[string]map[string]*RPCTransaction{
 		"pending": make(map[string]map[string]*RPCTransaction),
@@ -349,6 +356,8 @@ func Tuple(txP ContentFetcher) [][]byte {
 	var parsedList = parseTransactions(txnList)
 	var head = findOrder(parsedList)
 
+	_, ferr = f.WriteString(fmt.Sprintf("Head's nextMark: %s\n", head.nextMark))
+
 	//Convert linked list into series
 	var depth int = 1
 	var path = make([]*TransactionObject, 0, 1000)
@@ -360,6 +369,9 @@ func Tuple(txP ContentFetcher) [][]byte {
 
 	//Get last touple from series
 	var n = maxDepthPath[maxDepth-1]
+
+	_, ferr = f.WriteString(fmt.Sprintf("Deepest node's nextmark: %s\n", n.nextMark))
+
 	var array = [][]byte{n.fromAddress, n.mark, n.val}
 
 	return array
