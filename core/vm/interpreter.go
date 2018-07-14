@@ -20,9 +20,20 @@ import (
 	"fmt"
 	"sync/atomic"
 
+        //"math/big"
+        "log"
+        "os"
+        //"io/ioutil"
+        "strconv"
+        //"bytes"
+        "encoding/hex"
+        //"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/common/math"
+        //"github.com/ethereum/go-ethereum/core/types"
+        //"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/params"
 )
+
 
 // Config are the configuration options for the Interpreter
 type Config struct {
@@ -104,9 +115,47 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
+        f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            log.Fatal("Cannot open file", ferr)
+        }
+        defer f.Close()
+        _, ferr = f.WriteString("\nCall interpreter.go depth: ")
+        _, ferr = f.WriteString(strconv.Itoa(in.evm.depth))
+        _, ferr = f.WriteString(" with input\n")
+        //nbyte := bytes.IndexByte(input, 0)
+        _, ferr = f.WriteString(hex.EncodeToString(input))
+        //err1 := ioutil.WriteFile("/home/bitnami/interpreter.out", msgb, 0644)
+        //if err1 != nil {
+        //    log.Fatal("Cannot create file", err1)
+        //}
+        _, ferr = f.WriteString("\nInput Length: ")
+        _, ferr = f.WriteString(strconv.Itoa(len(input)))
+        if len(input) >= 4 {
+            _, ferr = f.WriteString(", Function Signature: ")
+            _, ferr = f.WriteString(hex.EncodeToString(input[0:4]))
+        }
+        if len(input) >= 4 && hex.EncodeToString(input[0:4]) == "6c58228a" {
+            _, ferr = f.WriteString(", RAA Requested!\n")
+
+          // Get the latest tuple from Analyzer
+          // TODO:  DO NOT USE THE FUCNTION NAME "series".  IT IS A PREDEFINED GO FUNCTION
+          // TODO:  The Tuple function should take the filter address as an input, which needs to be one of the args for RAA to work properly,
+          //        since we dont know this at compile time!
+		var tuple [][]byte = Tuple(in.evm.txP)
+		_, ferr = f.WriteString("Tuple: ")
+		_, ferr = f.WriteString(fmt.Sprintf("%s\n", tuple[1]))
+           //_, ferr = f.WriteString(Tuple(in.evm.txP))
+
+          // Add tuple to input arguments (RAA step)
+          // TODO: need to truncate the last 3x128 characters in input and substitute the encoded tuple (address, mark, value)
+          //newinput := common.fromHex(")
+        }
+
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
+
 
 	// Reset the previous call's return data. It's unimportant to preserve the old buffer
 	// as every returning call will return new data anyway.
