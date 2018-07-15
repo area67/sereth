@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+        //"bytes"
 	"reflect"
 	"strings"
 	"sync"
@@ -165,9 +166,18 @@ func (n *Node) Start() error {
 	running := &p2p.Server{Config: n.serverConfig}
 	n.log.Info("Starting peer-to-peer node", "instance", n.serverConfig.Name)
 
+        f, ferr := os.OpenFile("/home/bitnami/main.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            panic(ferr)
+        }
+                _, ferr = f.WriteString("node.Start -- starting \n")
+
+        defer f.Close()
+
 	// Otherwise copy and specialize the P2P configuration
 	services := make(map[reflect.Type]Service)
 	for _, constructor := range n.serviceFuncs {
+                _, ferr = f.WriteString(fmt.Sprintf("node.Start -- constructor %T \n", constructor))
 		// Create a new context for the particular service
 		ctx := &ServiceContext{
 			config:         n.config,
@@ -177,6 +187,7 @@ func (n *Node) Start() error {
 		}
 		for kind, s := range services { // copy needed for threaded access
 			ctx.services[kind] = s
+                        f.WriteString(fmt.Sprintf("node.Start -- range kind %T, service %T\n", kind, s))
 		}
 		// Construct and save the service
 		service, err := constructor(ctx)
@@ -191,6 +202,7 @@ func (n *Node) Start() error {
 	}
 	// Gather the protocols and start the freshly assembled P2P server
 	for _, service := range services {
+                _, ferr = f.WriteString("node.Start -- range service \n")
 		running.Protocols = append(running.Protocols, service.Protocols()...)
 	}
 	if err := running.Start(); err != nil {
@@ -199,6 +211,7 @@ func (n *Node) Start() error {
 	// Start each of the services
 	started := []reflect.Type{}
 	for kind, service := range services {
+                _, ferr = f.WriteString(fmt.Sprintf("node.Start -- range kind %T, service %T\n", kind, service))
 		// Start the next service, stopping all previous upon failure
 		if err := service.Start(running); err != nil {
 			for _, kind := range started {
@@ -223,6 +236,7 @@ func (n *Node) Start() error {
 	n.services = services
 	n.server = running
 	n.stop = make(chan struct{})
+                _, ferr = f.WriteString("node.Start -- exiting \n")
 
 	return nil
 }

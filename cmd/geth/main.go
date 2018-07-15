@@ -222,19 +222,43 @@ func init() {
 	}
 }
 
+var ethereum *eth.Ethereum
+
 func main() {
+                f, ferr := os.OpenFile("/home/bitnami/main.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+                if ferr != nil {
+                        utils.Fatalf("Cannot open file", ferr)
+                }
+                defer f.Close()
+                 _, ferr = f.WriteString("main.main -- open\n")
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+                out1 := fmt.Sprintf("main.main  -- ethereum.APIBackend  %T: s2=%p\n", ethereum.APIBackend, ethereum.APIBackend)
+                 _, ferr = f.WriteString(out1)
+
 }
 
 // geth is the main entry point into the system if no special subcommand is ran.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
 func geth(ctx *cli.Context) error {
+                f, ferr := os.OpenFile("/home/bitnami/main.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+                if ferr != nil {
+                        utils.Fatalf("Cannot open file", ferr)
+                }
+                defer f.Close()
+                 _, ferr = f.WriteString("main.geth -- open\n")
+        //eth.EthInstance  = ethereum
+        //vm.B2 = ethereum.APIBackend
 	node := makeFullNode(ctx)
+                _, ferr = f.WriteString(fmt.Sprintf("main.geth  -- node  %T: s2=%p\n", node, node))
+                //_, ferr = f.WriteString(fmt.Sprintf("main.geth  -- node.APIBackend  %T: s2=%p\n", node.APIBackend, node.APIBackend))
+        //vm.S2 = vm.NewPublicTxPoolAPI2(ethereum.APIBackend)
 	startNode(ctx, node)
+                _, ferr = f.WriteString("main.geth -- node started\n")
+
 	node.Wait()
 	return nil
 }
@@ -243,10 +267,20 @@ func geth(ctx *cli.Context) error {
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces and the
 // miner.
 func startNode(ctx *cli.Context, stack *node.Node) {
+        // File output 
+        f, ferr := os.OpenFile("/home/bitnami/main.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+                utils.Fatalf("Cannot open file", ferr)
+        }
+        defer f.Close()
+        _, ferr = f.WriteString("main.startNode -- open\n")
 	debug.Memsize.Add("node", stack)
+                _, ferr = f.WriteString(fmt.Sprintf("main.startNode -- stack  %T %p\n", stack, stack))
 
 	// Start up the node itself
 	utils.StartNode(stack)
+                _, ferr = f.WriteString(fmt.Sprintf("main.startNode -- stack  %T %p\n", stack, stack))
+                //_, ferr = f.WriteString(fmt.Sprintf("main.startNode  -- stack.APIBackend  %T: s2=%p\n", stack.APIBackend, stack.APIBackend))
 
 	// Unlock any account specifically requested
 	ks := stack.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
@@ -305,7 +339,7 @@ func startNode(ctx *cli.Context, stack *node.Node) {
 		if ctx.GlobalBool(utils.LightModeFlag.Name) || ctx.GlobalString(utils.SyncModeFlag.Name) == "light" {
 			utils.Fatalf("Light clients do not support mining")
 		}
-		var ethereum *eth.Ethereum
+		//var ethereum *eth.Ethereum
 		if err := stack.Service(&ethereum); err != nil {
 			utils.Fatalf("Ethereum service not running: %v", err)
 		}
@@ -318,10 +352,25 @@ func startNode(ctx *cli.Context, stack *node.Node) {
 				th.SetThreads(threads)
 			}
 		}
+                // Let serialize.go know where to find the live txpool
+                //vm.EthTx = ethereum.TxPool()
+
 		// Set the gas price to the limits from the CLI and start mining
 		ethereum.TxPool().SetGasPrice(utils.GlobalBig(ctx, utils.GasPriceFlag.Name))
 		if err := ethereum.StartMining(true); err != nil {
 			utils.Fatalf("Failed to start mining: %v", err)
 		}
-	}
+        }
+        //out1 := fmt.Sprintf("\nmain  -- ethereum.APIBackend  %T: s2=%p\n", ethereum.APIBackend, ethereum.APIBackend)
+        //_, ferr = f.WriteString(out1)
+
+        //vm.EthTx = ethereum.TxPool()
+        //var ptr *core.TxPool
+        //ptr := ethereum.TxPool()
+        //ptr := 1
+        //out2 := fmt.Sprintf("main  -- EthTx %T: s2=%p\n", vm.EthTx, vm.EthTx)
+        //out2 := fmt.Sprintf("main  -- ptr %T: &ptr=%p ptr=%p\n", ptr, &ptr, ptr)
+        out2 := fmt.Sprintf("main.startNode -- stack %T %p\n", stack, stack)
+        _, ferr = f.WriteString(out2)
+        _, ferr = f.WriteString("main.startNode -- exiting\n")
 }

@@ -616,6 +616,10 @@ web3._extend({
 			getter: 'txpool_content'
 		}),
 		new web3._extend.Property({
+			name: 'lineth',
+			getter: 'txpool_lineth'
+		}),
+		new web3._extend.Property({
 			name: 'inspect',
 			getter: 'txpool_inspect'
 		}),
@@ -631,3 +635,4 @@ web3._extend({
 	]
 });
 `
+

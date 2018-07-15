@@ -24,6 +24,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+        "os"
+        "os/exec"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -518,6 +520,37 @@ func (pool *TxPool) Content() (map[common.Address]types.Transactions, map[common
 		queued[addr] = list.Flatten()
 	}
 	return pending, queued
+}
+
+
+// Lineth scans the transaction pool and extracts the most recent intra-block mark and value.
+func (pool *TxPool) Lineth() (map[common.Address]types.Transactions, map[common.Address]types.Transactions, []byte) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	pending := make(map[common.Address]types.Transactions)
+	for addr, list := range pool.pending {
+		pending[addr] = list.Flatten()
+	}
+	queued := make(map[common.Address]types.Transactions)
+	for addr, list := range pool.queue {
+		queued[addr] = list.Flatten()
+	}
+
+	var (
+		cmdOut []byte
+		err    error
+	)
+	cmdName := "git"
+	cmdArgs := []string{"rev-parse", "--verify", "HEAD"}
+	if cmdOut, err = exec.Command(cmdName, cmdArgs...).Output(); err != nil {
+		fmt.Fprintln(os.Stderr, "There was an error running git rev-parse command: ", err)
+		os.Exit(1)
+	}
+	sha := string(cmdOut)
+	firstSix := sha[:6]
+	fmt.Println("The first six chars of the SHA at HEAD in this repo are", firstSix)
+	return pending, queued, cmdOut
 }
 
 // Pending retrieves all currently processable transactions, groupped by origin
@@ -1235,3 +1268,4 @@ func (t *txLookup) Remove(hash common.Hash) {
 
 	delete(t.all, hash)
 }
+

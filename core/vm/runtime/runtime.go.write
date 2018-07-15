@@ -24,7 +24,6 @@ import (
         "fmt"
         "log"
         "os"
-        "io/ioutil"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -98,11 +97,12 @@ func setDefaults(cfg *Config) {
 // Executes sets up a in memory, temporarily, environment for the execution of
 // the given code. It makes sure that it's restored to it's original state afterwards.
 func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
-        msgb :=  []byte("hello\ngo\n")
-        err1 := ioutil.WriteFile("/home/bitnami/resultexec.txt", msgb, 0644)
+        file1, err1 := os.Create("resultexec.txt")
         if err1 != nil {
             log.Fatal("Cannot create file", err1)
         }
+        defer file1.Close()
+        fmt.Fprintf(file1, "Hello Readers of golangcode.com")
 
 	if cfg == nil {
 		cfg = new(Config)

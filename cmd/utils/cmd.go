@@ -64,9 +64,16 @@ func Fatalf(format string, args ...interface{}) {
 }
 
 func StartNode(stack *node.Node) {
+                f, ferr := os.OpenFile("/home/bitnami/main.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+                if ferr != nil {
+                        Fatalf("Cannot open file", ferr)
+                }
+                defer f.Close()
+                _, ferr = f.WriteString("cmd.StartNode -- open \n")
 	if err := stack.Start(); err != nil {
 		Fatalf("Error starting protocol stack: %v", err)
 	}
+                _, ferr = f.WriteString("cmd.StartNode -- goroutine \n")
 	go func() {
 		sigc := make(chan os.Signal, 1)
 		signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
@@ -83,6 +90,7 @@ func StartNode(stack *node.Node) {
 		debug.Exit() // ensure trace and CPU profile data is flushed.
 		debug.LoudPanic("boom")
 	}()
+                _, ferr = f.WriteString("cmd.StartNode -- exiting \n")
 }
 
 func ImportChain(chain *core.BlockChain, fn string) error {
