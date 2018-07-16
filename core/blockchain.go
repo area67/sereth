@@ -269,8 +269,8 @@ func (bc *BlockChain) SetHead(head uint64) error {
 	defer bc.mu.Unlock()
 
 	// Rewind the header chain, deleting all block bodies until then
-	delFn := func(hash common.Hash, num uint64) {
-		rawdb.DeleteBody(bc.db, hash, num)
+	delFn := func(db rawdb.DatabaseDeleter, hash common.Hash, num uint64) {
+		rawdb.DeleteBody(db, hash, num)
 	}
 	bc.hc.SetHead(head, delFn)
 	currentHeader := bc.hc.CurrentHeader()
@@ -672,7 +672,7 @@ func (bc *BlockChain) Stop() {
 			}
 		}
 		for !bc.triegc.Empty() {
-			triedb.Dereference(bc.triegc.PopItem().(common.Hash), common.Hash{})
+			triedb.Dereference(bc.triegc.PopItem().(common.Hash))
 		}
 		if size, _ := triedb.Size(); size != 0 {
 			log.Error("Dangling trie nodes after full cleanup")
@@ -947,7 +947,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 					bc.triegc.Push(root, number)
 					break
 				}
-				triedb.Dereference(root.(common.Hash), common.Hash{})
+				triedb.Dereference(root.(common.Hash))
 			}
 		}
 	}
@@ -1340,9 +1340,12 @@ func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
 	diff := types.TxDifference(deletedTxs, addedTxs)
 	// When transactions get deleted from the database that means the
 	// receipts that were created in the fork must also be deleted
+	batch := bc.db.NewBatch()
 	for _, tx := range diff {
-		rawdb.DeleteTxLookupEntry(bc.db, tx.Hash())
+		rawdb.DeleteTxLookupEntry(batch, tx.Hash())
 	}
+	batch.Write()
+
 	if len(deletedLogs) > 0 {
 		go bc.rmLogsFeed.Send(RemovedLogsEvent{deletedLogs})
 	}
@@ -1522,6 +1525,18 @@ func (bc *BlockChain) HasHeader(hash common.Hash, number uint64) bool {
 // hash, fetching towards the genesis block.
 func (bc *BlockChain) GetBlockHashesFromHash(hash common.Hash, max uint64) []common.Hash {
 	return bc.hc.GetBlockHashesFromHash(hash, max)
+}
+
+// GetAncestor retrieves the Nth ancestor of a given block. It assumes that either the given block or
+// a close ancestor of it is canonical. maxNonCanonical points to a downwards counter limiting the
+// number of blocks to be individually checked before we reach the canonical chain.
+//
+// Note: ancestor == 0 returns the same block, 1 returns its parent and so on.
+func (bc *BlockChain) GetAncestor(hash common.Hash, number, ancestor uint64, maxNonCanonical *uint64) (common.Hash, uint64) {
+	bc.chainmu.Lock()
+	defer bc.chainmu.Unlock()
+
+	return bc.hc.GetAncestor(hash, number, ancestor, maxNonCanonical)
 }
 
 // GetHeaderByNumber retrieves a block header from the database by number,

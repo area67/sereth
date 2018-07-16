@@ -20,9 +20,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"math/big"
-        "os"
-        "log"
-        "fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -64,13 +61,6 @@ var PrecompiledContractsByzantium = map[common.Address]PrecompiledContract{
 
 // RunPrecompiledContract runs and evaluates the output of a precompiled contract.
 func RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
-        file1, err1 := os.Create("resultexec.txt")
-        if err1 != nil {
-            log.Fatal("Cannot create file", err1)
-        }
-        defer file1.Close()
-        fmt.Fprintf(file1, "Hello Readers of golangcode.com")
-
 	gas := p.RequiredGas(input)
 	if contract.UseGas(gas) {
 		return p.Run(input)
