@@ -313,8 +313,8 @@ web3._extend({
 			params: 2
 		}),
 		new web3._extend.Method({
-			name: 'setMutexProfileRate',
-			call: 'debug_setMutexProfileRate',
+			name: 'setMutexProfileFraction',
+			call: 'debug_setMutexProfileFraction',
 			params: 1
 		}),
 		new web3._extend.Method({
@@ -616,10 +616,6 @@ web3._extend({
 			getter: 'txpool_content'
 		}),
 		new web3._extend.Property({
-			name: 'lineth',
-			getter: 'txpool_lineth'
-		}),
-		new web3._extend.Property({
 			name: 'inspect',
 			getter: 'txpool_inspect'
 		}),
@@ -635,4 +631,3 @@ web3._extend({
 	]
 });
 `
-
