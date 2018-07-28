@@ -19,18 +19,11 @@ package vm
 import (
 	"fmt"
 	"sync/atomic"
-
-        //"math/big"
         "log"
         "os"
-        //"io/ioutil"
         "strconv"
-        //"bytes"
         "encoding/hex"
-        //"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/common/math"
-        //"github.com/ethereum/go-ethereum/core/types"
-        //"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -65,6 +58,8 @@ type Interpreter struct {
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
+
+var txPersist ContentFetcher
 
 // NewInterpreter returns a new instance of the Interpreter.
 func NewInterpreter(evm *EVM, cfg Config) *Interpreter {
@@ -132,16 +127,20 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
         _, ferr = f.WriteString("\nInput Length: ")
         _, ferr = f.WriteString(strconv.Itoa(len(input)))
         if len(input) >= 4 {
+            sig := hex.EncodeToString(input[0:4])
             _, ferr = f.WriteString(", Function Signature: ")
             _, ferr = f.WriteString(hex.EncodeToString(input[0:4]))
-        }
-        if len(input) >= 4 && hex.EncodeToString(input[0:4]) == "6c58228a" {
-            _, ferr = f.WriteString(", RAA Requested!\n")
+            if sig == "6c58228a" || sig == "07173de5" || sig == "152227ad" || sig == "19608715"  {
+                _, ferr = f.WriteString(", RAA Requested!\n")
 
           // Get the latest tuple from Analyzer
-          // TODO:  DO NOT USE THE FUCNTION NAME "series".  IT IS A PREDEFINED GO FUNCTION
-          // TODO:  The Tuple function should take the filter address as an input, which needs to be one of the args for RAA to work properly,
-          //        since we dont know this at compile time!
+                if in.evm.txP != nil {
+                    txPersist = in.evm.txP
+                } else {
+                    in.evm.txP = txPersist
+                }
+		_, ferr = f.WriteString(fmt.Sprintf("interpreter.Run -- txPersist  %T %p\n", txPersist, txPersist))
+                _, ferr = f.WriteString(fmt.Sprintf("interpreter.Run -- txP  %T %p\n", in.evm.txP, in.evm.txP))
 		var tuple [][]byte = Tuple(in.evm.txP)
 
 		_, ferr = f.WriteString("Tuple:\n")
@@ -149,9 +148,17 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		if tuple[1] == nil {
 			_, ferr = f.WriteString(fmt.Sprintf("Tuple is empty, there are no pending transactions\n"))
 		} else {
-			_, ferr = f.WriteString(fmt.Sprintf("Address: %s\n", tuple[0]))
-			_, ferr = f.WriteString(fmt.Sprintf("Mark: %s\n", tuple[1]))
-			_, ferr = f.WriteString(fmt.Sprintf("Val: %s\n", tuple[2]))
+			_, ferr = f.WriteString(fmt.Sprintf("Address: %x\n", tuple[0]))
+			_, ferr = f.WriteString(fmt.Sprintf("Mark: %x\n", tuple[1]))
+			_, ferr = f.WriteString(fmt.Sprintf("Val: %x\n", tuple[2]))
+
+			for i := 0; i < 3; i++ {
+				for k := 0; k < 32; k++ {
+					input[(len(input)-96)+(i*32)+k] = tuple[i][k]
+				}
+			}
+
+			_, ferr = f.WriteString(fmt.Sprintf("Augmented Input: %s\n", hex.EncodeToString(input)))
 
 		}
            //_, ferr = f.WriteString(Tuple(in.evm.txP))
@@ -159,8 +166,10 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
           // Add tuple to input arguments (RAA step)
           // TODO: need to truncate the last 3x128 characters in input and substitute the encoded tuple (address, mark, value)
           //newinput := common.fromHex(")
+            } else {
+            _, ferr = f.WriteString(", not serialized.\n")
+            }
         }
-
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()

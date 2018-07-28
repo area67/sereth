@@ -17,6 +17,9 @@
 package core
 
 import (
+        "os"
+        "log"
+        "fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
@@ -94,6 +97,12 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	context := NewEVMContext(msg, header, bc, author)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
+        f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            log.Fatal("Cannot open file", ferr)
+        }
+
+        _, ferr = f.WriteString(fmt.Sprintf("core.ApplyTransaction -- context  %T %p\n", context, context))
 	vmenv := vm.NewEVM(context, statedb, config, cfg, nil)
 	// Apply the transaction to the current state (included in the env)
 	_, gas, failed, err := ApplyMessage(vmenv, msg, gp)

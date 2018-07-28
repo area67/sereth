@@ -21,11 +21,6 @@ import (
 	"math/big"
 	"time"
 
-        "fmt"
-        "log"
-        "os"
-        "io/ioutil"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -98,12 +93,6 @@ func setDefaults(cfg *Config) {
 // Executes sets up a in memory, temporarily, environment for the execution of
 // the given code. It makes sure that it's restored to it's original state afterwards.
 func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
-        msgb :=  []byte("hello\ngo\n")
-        err1 := ioutil.WriteFile("/home/bitnami/resultexec.txt", msgb, 0644)
-        if err1 != nil {
-            log.Fatal("Cannot create file", err1)
-        }
-
 	if cfg == nil {
 		cfg = new(Config)
 	}
@@ -134,13 +123,6 @@ func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
 
 // Create executes the code using the EVM create method
 func Create(input []byte, cfg *Config) ([]byte, common.Address, uint64, error) {
-        file2, err2 := os.Create("resultcreate.txt")
-        if err2 != nil {
-            log.Fatal("Cannot create file", err2)
-        }
-        defer file2.Close()
-        fmt.Fprintf(file2, "Hello Readers of golangcode.com")
-
 	if cfg == nil {
 		cfg = new(Config)
 	}

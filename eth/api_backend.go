@@ -19,6 +19,9 @@ package eth
 import (
 	"context"
 	"math/big"
+	"os"
+	"log"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -129,11 +132,20 @@ func (b *EthAPIBackend) GetTd(blockHash common.Hash) *big.Int {
 }
 
 func (b *EthAPIBackend) GetEVM(ctx context.Context, msg core.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error) {
+	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            log.Fatal("Cannot open file", ferr)
+        }
+
+	_, ferr = f.WriteString(fmt.Sprintf("api_backend.GetEVM -- b  %T %p\n", b, b))
 	state.SetBalance(msg.From(), math.MaxBig256)
 	vmError := func() error { return nil }
 
 	context := core.NewEVMContext(msg, header, b.eth.BlockChain(), nil)
         txP := b.eth.TxPool()
+
+	_, ferr = f.WriteString(fmt.Sprintf("api_backend.GetEVM -- txP  %T %p\n", txP, txP))
+
 	return vm.NewEVM(context, state, b.eth.chainConfig, vmCfg, txP), vmError, nil
 }
 

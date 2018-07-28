@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+        "encoding/hex"
         "os"
 	"log"
 	"github.com/ethereum/go-ethereum/common"
@@ -47,7 +48,7 @@ type RPCTransaction struct {
 }
 
 type TransactionObject struct {
-	hash, fromAddress, functionName, mark, val, nextMark []byte
+	hash, fromAddress, functionName, mark, val, oldMark []byte
 	nextTxn                                              []*TransactionObject
 }
 
@@ -121,17 +122,24 @@ func parseTransactions(txns []*RPCTransaction) []TransactionObject {
 		}
 
 		var name []byte = data[0:4]
-		var mark []byte = data[4:36]
-		var val []byte = data[36:68]
+		var oldMark []byte = data[36:68]
+		var val []byte = data[68:100]
 
-		_, ferr = f.WriteString(fmt.Sprintf("Parsing transaction\nMark: %d\nVal: %d\n", mark, val))
+                sig := hex.EncodeToString(name)
+		_, ferr = f.WriteString(fmt.Sprintf("Parsing transaction\nVal: %x,\noldMark: %x\n", val, oldMark))
 
 		//Filter transactions and add them to our slice
-		ourAddress := common.HexToAddress("0x48c1bdb954c945a57459286719e1a3c86305fd9e")
-		var to = *txn.To
-		if bytes.Equal(name, common.FromHex("6c58228a")) && bytes.Compare(to.Bytes(), ourAddress.Bytes()) == 0 {
-			var nextMark []byte = crypto.Keccak256(mark, val)
-			inputArray[k] = TransactionObject{nil, nil, name, mark, val, nextMark, make([]*TransactionObject, 0, 100)}
+		// ourAddress := common.HexToAddress("0x48c1bdb954c945a57459286719e1a3c86305fd9e")
+		// var to = *txn.To
+		if sig == "6c58228a" || sig == "07173de5" || sig == "152227ad" || sig == "19608715" {
+                     // && bytes.Compare(to.Bytes(), ourAddress.Bytes()) == 0 {
+			var mark []byte = crypto.Keccak256(oldMark, val)
+			var address = txn.From.Bytes()
+			var paddedAddress = make([]byte, 32);
+
+			copy(paddedAddress[32-len(address):], address)
+
+			inputArray[k] = TransactionObject{nil, paddedAddress, name, mark, val, oldMark, make([]*TransactionObject, 0, 100)}
 			k = k+1
 		}
 	}
@@ -143,17 +151,17 @@ func parseTransactions(txns []*RPCTransaction) []TransactionObject {
 }
 
 func findOrder(txns []TransactionObject) *TransactionObject {
-	var head = TransactionObject{nextMark: common.FromHex("0x7374617274484d53000000000000000000000000000000000000000000000000"), nextTxn: make([]*TransactionObject, 0, 100)}
+	var head = TransactionObject{mark: common.FromHex("0x7374617274484d53000000000000000000000000000000000000000000000000"), fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), nextTxn: make([]*TransactionObject, 0, 100)}
 
 	for i := 0; i < len(txns); i++ {
-		if bytes.Equal(head.nextMark, txns[i].mark) {
+		if bytes.Equal(head.mark, txns[i].oldMark) {
 			head.nextTxn = sliceAppend(head.nextTxn, &txns[i])
 		}
 	}
 
 	for i := 0; i < len(txns); i++ {
 		for k := 0; k < len(txns); k++ {
-			if bytes.Equal(txns[i].nextMark, txns[k].mark) && i != k {
+			if bytes.Equal(txns[i].mark, txns[k].oldMark) && i != k {
 				txns[i].nextTxn = sliceAppend(txns[i].nextTxn, &txns[k])
 			}
 		}
@@ -250,7 +258,7 @@ func Tuple(txP ContentFetcher) [][]byte {
 	//Get last touple from series
 	var n = maxDepthPath[maxDepth-1]
 
-	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %d\nval: %d\nnextmark: %d\n", n.mark, n.val, n.nextMark))
+	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %d\nval: %d\n", n.mark, n.val))
 
 	var array = [][]byte{n.fromAddress, n.mark, n.val}
 
