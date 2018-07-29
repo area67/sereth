@@ -151,7 +151,7 @@ func parseTransactions(txns []*RPCTransaction) []TransactionObject {
 }
 
 func findOrder(txns []TransactionObject) *TransactionObject {
-	var head = TransactionObject{mark: common.FromHex("0x7374617274484d53000000000000000000000000000000000000000000000000"), fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), nextTxn: make([]*TransactionObject, 0, 100)}
+	var head = TransactionObject{mark: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), nextTxn: make([]*TransactionObject, 0, 100)}
 
 	for i := 0; i < len(txns); i++ {
 		if bytes.Equal(head.mark, txns[i].oldMark) {
