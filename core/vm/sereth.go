@@ -84,6 +84,12 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
         return result
 }
 
+var head = TransactionObject{
+	mark: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"),
+	fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"),
+	val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"),
+	nextTxn: make([]*TransactionObject, 0, 100)}
+
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
 func newRPCPendingTransaction(tx *types.Transaction) *RPCTransaction {
         return newRPCTransaction(tx, common.Hash{}, 0, 0)
@@ -103,7 +109,7 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 }
 
 //Parse the payload and filter out unrelated transactions
-func parseTransactions(RAATransactionOldMark []byte, txns []*RPCTransaction) ([]TransactionObject, *TransactionObject) {
+func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte, txns []*RPCTransaction) ([]TransactionObject, *TransactionObject) {
 	//Create a slice that will contain all filtered transactions
 	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
@@ -142,7 +148,7 @@ func parseTransactions(RAATransactionOldMark []byte, txns []*RPCTransaction) ([]
 
 			var txnObj = TransactionObject{nil, paddedAddress, name, mark, val, oldMark, make([]*TransactionObject, 0, 100), nil}
 
-			if bytes.Compare(RAATransactionOldMark, oldMark) == 0 {
+			if bytes.Compare(RAATransactionOldMark, oldMark) == 0 /*&& bytes.Compare(RAATransactionSender, paddedAddress) == 0*/ {
 				RAATransaction = &txnObj
 			}
 
@@ -157,8 +163,8 @@ func parseTransactions(RAATransactionOldMark []byte, txns []*RPCTransaction) ([]
 	return inputArray[0:k], RAATransaction
 }
 
-func findOrder(txns []TransactionObject, startMark []byte) *TransactionObject {
-	var head = TransactionObject{mark: startMark, fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"), nextTxn: make([]*TransactionObject, 0, 100)}
+func findOrder(txns []TransactionObject) *TransactionObject {
+	head.nextTxn = make([]*TransactionObject, 0, 100)
 
 	for i := 0; i < len(txns); i++ {
 		if bytes.Equal(head.mark, txns[i].oldMark) {
@@ -195,6 +201,24 @@ func findDeepestBranch(head *TransactionObject, depth int, maxDepth *int, path, 
 		path = sliceDelete(path)
 	}
 	return
+}
+
+func isInSeries(txn *TransactionObject, series []*TransactionObject) bool {
+        f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+            log.Fatal("Cannot open file\n", ferr)
+        }
+        defer f.Close()
+        _, ferr = f.WriteString(fmt.Sprintf("isInSeries? %x, %x, %x, %x\n", txn.fromAddress, txn.mark, txn.oldMark, txn.val ))
+
+	for i := 0; i < len(series); i++ {
+                _, ferr = f.WriteString(fmt.Sprintf("%x, %x, %x, %x\n", series[i].fromAddress, series[i].mark, series[i].oldMark, series[i].val ))
+
+		if bytes.Equal(txn.fromAddress, series[i].fromAddress) && bytes.Equal(txn.mark, series[i].mark) && bytes.Equal(txn.oldMark, series[i].oldMark) && bytes.Equal(txn.val, series[i].val) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRAA(input []byte) bool {
@@ -271,19 +295,34 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 	//Slice such that length is equal to number of transactions in pending
 	txnList = txnList[0:i]
 	var RAATransactionOldMark []byte
-	var startMark = common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")
+	var RAATransactionSender []byte
 	if hex.EncodeToString(input[0:4]) == "19608715" {
 		_, ferr = f.WriteString("Call is requesting RAA for specific Transaction\n")
 		RAATransactionOldMark = input[36:68]
-	}
-	if len(input) >= 64 {
-		startMark = input[len(input)-64:len(input)-32]
+		RAATransactionSender = input[4:36]
 	}
 
-	_, ferr = f.WriteString(fmt.Sprintf("Start Mark: %x\n", startMark))
+	var nullHex = common.FromHex("0x6e756c6c00000000000000000000000000000000000000000000000000000000")
+	if len(input) >= 96 {
+		startAddress := input[len(input)-96:len(input)-64]
+		startMark := input[len(input)-64:len(input)-32]
+		startVal := input[len(input)-32:len(input)]
 
-	var parsedList, RAATransaction = parseTransactions(RAATransactionOldMark, txnList)
-	var head = findOrder(parsedList, startMark)
+		if !bytes.Equal(startAddress, nullHex){
+			head.fromAddress = startAddress
+		}
+		if !bytes.Equal(startMark, nullHex){
+                        head.mark = startMark
+                }
+		if !bytes.Equal(startVal, nullHex){
+                        head.val = startVal
+                }
+
+		_, ferr = f.WriteString(fmt.Sprintf("Start Mark: %x\n", startMark))
+	}
+
+	var parsedList, RAATransaction = parseTransactions(RAATransactionOldMark, RAATransactionSender, txnList)
+	var head = findOrder(parsedList)
 
 	//Convert linked list into series
 	var depth int = 1
@@ -300,7 +339,7 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 
 	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %x\nval: %x\n", n.mark, n.val))
 
-	if RAATransaction != nil {
+	if RAATransaction != nil && isInSeries(RAATransaction, maxDepthPath[0:maxDepth]) {
 		array = [][]byte{RAATransaction.fromAddress, RAATransaction.oldMark, RAATransaction.val}
 		_, ferr = f.WriteString(fmt.Sprintf("RAATransaction:\nmark: %x\nval: %x\nGuessMark: %x\n\n", RAATransaction.mark, RAATransaction.val, RAATransaction.oldMark))
 	} else {
