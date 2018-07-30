@@ -21,8 +21,8 @@ import (
 	"sync/atomic"
         "log"
         "os"
-        "strconv"
-        "encoding/hex"
+        //"strconv"
+        //"encoding/hex"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -115,17 +115,26 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
             log.Fatal("Cannot open file", ferr)
         }
         defer f.Close()
-        _, ferr = f.WriteString("\nCall interpreter.go depth: ")
-        _, ferr = f.WriteString(strconv.Itoa(in.evm.depth))
-        _, ferr = f.WriteString(" with input\n")
+        //_, ferr = f.WriteString("\nCall interpreter.go depth: ")
+        //_, ferr = f.WriteString(strconv.Itoa(in.evm.depth))
+        //_, ferr = f.WriteString(" with input\n")
         //nbyte := bytes.IndexByte(input, 0)
-        _, ferr = f.WriteString(hex.EncodeToString(input))
+        //_, ferr = f.WriteString(hex.EncodeToString(input))
         //err1 := ioutil.WriteFile("/home/bitnami/interpreter.out", msgb, 0644)
         //if err1 != nil {
         //    log.Fatal("Cannot create file", err1)
         //}
-        _, ferr = f.WriteString("\nInput Length: ")
-        _, ferr = f.WriteString(strconv.Itoa(len(input)))
+
+	if isRAA(input) {
+                if in.evm.txP != nil {
+                    txPersist = in.evm.txP
+                } else {
+                    in.evm.txP = txPersist
+                }
+                input = doRAA(input, in.evm.txP)
+        }
+
+/*
         if len(input) >= 4 {
             sig := hex.EncodeToString(input[0:4])
             _, ferr = f.WriteString(", Function Signature: ")
@@ -169,7 +178,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
             } else {
             _, ferr = f.WriteString(", not serialized.\n")
             }
-        }
+        }*/
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
