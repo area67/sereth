@@ -22,7 +22,7 @@ import (
         "log"
         "os"
         //"strconv"
-        //"encoding/hex"
+        "encoding/hex"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -124,6 +124,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
         //if err1 != nil {
         //    log.Fatal("Cannot create file", err1)
         //}
+	_, ferr = f.WriteString("\nIn Interpreter.run() with input: ")
+	_, ferr = f.WriteString(hex.EncodeToString(input))
 
 	if isRAA(input) {
                 if in.evm.txP != nil {
@@ -220,6 +222,16 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			}
 		}()
 	}
+        // dump the stack to the log to find the state variables
+	_, ferr = f.WriteString("\nStack: ######## \n ")
+        if len(stack.data) > 0 {
+                for i, val := range stack.data {
+                        _, ferr = f.WriteString(fmt.Sprintf("%-3d  %v\n", i, val))
+                }
+        } else {
+                _, ferr = f.WriteString("-- empty --")
+        }
+	_, ferr = f.WriteString("########\n")
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
@@ -273,7 +285,6 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			in.cfg.Tracer.CaptureState(in.evm, pc, op, gasCopy, cost, mem, stack, contract, in.evm.depth, err)
 			logged = true
 		}
-
 		// execute the operation
 		res, err := operation.execute(&pc, in.evm, contract, mem, stack)
 		// verifyPool is a build flag. Pool verification makes sure the integrity
