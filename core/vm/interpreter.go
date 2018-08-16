@@ -133,7 +133,10 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
                 } else {
                     in.evm.txP = txPersist
                 }
-                input = doRAA(input, in.evm.txP)
+
+		if in.evm.txP != nil {
+			input = doRAA(input, in.evm.txP)
+		}
         }
 
 /*

@@ -135,7 +135,6 @@ func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte
 		var val []byte = data[68:100]
 		var raaMark []byte = data[132:164]
 		var raaVal []byte = data[164:196]
-		var zeroed = common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")
 
 		sig := hex.EncodeToString(name)
 		_, ferr = f.WriteString(fmt.Sprintf("Parsing transaction\nVal: %x,\noldMark: %x\n", val, oldMark))
@@ -148,6 +147,8 @@ func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte
 			var mark []byte = crypto.Keccak256(oldMark, val)
 			var address = txn.From.Bytes()
 			var paddedAddress = make([]byte, 32)
+			var specialMark []byte = common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000")
+			var specialVal []byte = common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")
 			copy(paddedAddress[32-len(address):], address)
 
 			var txnObj = TransactionObject{nil, paddedAddress, name, mark, val, oldMark, make([]*TransactionObject, 0, 100), nil}
@@ -158,21 +159,28 @@ func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte
 					highestNonce = txn.Nonce
 					RAATransaction = &txnObj
 				}
+				continue
 			}
 
 			//Filter out transactions that the anaylzer previously rejected
-			if bytes.Equal(oldMark, raaMark) && bytes.Equal(val, raaVal) || (bytes.Equal(zeroed, raaMark) && bytes.Equal(zeroed, raaVal)) {
+			if bytes.Equal(oldMark, raaMark) && bytes.Equal(val, raaVal) || (bytes.Equal(specialMark, raaMark) && bytes.Equal(specialVal, raaVal)) {
 				inputArray[k] = txnObj
 				k = k + 1
 			}
 		}
 	}
 
+	_, ferr = f.WriteString(fmt.Sprintf("Checking RAA Transaction: %p\n", RAATransaction))
+
 	if RAATransaction != nil {
+		_, ferr = f.WriteString(fmt.Sprintf("RAATransaction found\n"))
+		_, ferr = f.WriteString(fmt.Sprintf("Value %v\n", *RAATransaction))
 		//Add the RAA Transaction
 		inputArray[k] = *RAATransaction
 		k = k + 1
 	}
+
+	_, ferr = f.WriteString(fmt.Sprintf("Past RAA Check\n"))
 
 	f.Close()
 
@@ -347,13 +355,17 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 		RAATransactionVal = input[68:100]
 	}
 
+	_, ferr = f.WriteString(fmt.Sprintf("parsing\n"))
+
 	var parsedList, RAATransaction = parseTransactions(RAATransactionOldMark, RAATransactionSender, RAATransactionVal, txnList)
 	_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d\n", len(parsedList)))
-	if len(parsedList) == 0 || (len(parsedList) == 1 && hex.EncodeToString(input[0:4]) == "19608715") {
+	if len(parsedList) == 0 || (len(parsedList) == 1 && hex.EncodeToString(input[0:4]) == "19608715" && RAATransaction != nil) {
 		_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d, returning 0 RAA\n\n", len(parsedList)))
+		var defaults = [][]byte{common.FromHex("0x7261614164647265737300000000000000000000000000000000000000000000"), common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000"), common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")}
+		_, ferr = f.WriteString(fmt.Sprintf("defaults: %v\n", defaults))
 		for i := 0; i < 3; i++ {
 			for k := 0; k < 32; k++ {
-				input[(len(input)-96)+(i*32)+k] = 0
+				input[(len(input)-96)+(i*32)+k] = defaults[i][k]
 			}
 		}
 		return input
