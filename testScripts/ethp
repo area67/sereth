@@ -1,0 +1,104 @@
+#!/bin/bash
+
+IDENTITIES=(alice bob lily)
+FLAGS='--networkid=8888 --preload=identities.js --gasprice 0 --txpool.pricelimit 0'
+DEV_FLAGS='--nodiscover --verbosity=6 --rpc --rpcaddr 0.0.0.0 --rpcapi eth,web3,miner,txpool'
+
+BASE_PORT=40300
+BASE_RPC_PORT=8100
+
+SCRIPT=$(basename "$0")
+
+USAGE="Name:
+    $SCRIPT - Command line utility for creating and running a three node Ethereum private net
+
+    Network comes with three identities at the following addresses:
+
+        alice: 0xdda6ef2ff259928c561b2d30f0cad2c2736ce8b6 (initialized with 1 Ether)
+        bob:   0x8691bf25ce4a56b15c1f99c944dc948269031801 (initialized with 1 Ether)
+        lily:  0xb1b6a66a410edc72473d92decb3772bad863e243
+
+Usage:
+    $SCRIPT command [command options]
+
+Commands:
+    init       Initialize private network from genesis block in genesis.json
+    clean      Destroy all blockchain history, resetting to pristine state
+    start      Start a running ethereum node on the network (example: 'start alice')
+    connect    Connect two running nodes as peers (example: 'connect alice bob')
+    help       Print this help message
+
+Author:
+    Vincent Chu (@vincentchu), Initialized Capital
+    https://github.com/vincentchu/eth-private-net
+"
+
+function exec_on_node() {
+  geth --exec="$2" attach ./$1/geth.ipc
+}
+
+CMD=$1
+case $CMD in
+  init)
+    for IDENTITY in ${IDENTITIES[@]}; do
+      echo "Initializing genesis block for $IDENTITY"
+      geth --datadir=./$IDENTITY $FLAGS init genesis.json
+    done
+    ;;
+
+  clean)
+    for IDENTITY in ${IDENTITIES[@]}; do
+      echo "Cleaning geth/ directory from $IDENTITY"
+      rm -r ./$IDENTITY/geth
+    done
+    ;;
+
+  start)
+    IDENTITY=$2
+    if [ -z $IDENTITY ]
+    then
+      echo "No identity specified. Identity must be one of: ${IDENTITIES[*]}"
+      exit -1
+    fi
+
+    case $IDENTITY in
+      alice)
+        OFFSET=1
+        ;;
+
+      bob)
+        OFFSET=2
+        ;;
+
+      lily)
+        OFFSET=3
+        ;;
+    esac
+
+    PORT=$((BASE_PORT + OFFSET))
+    RPC_PORT=$((BASE_RPC_PORT + OFFSET))
+
+    echo "Starting node for $IDENTITY on port: $PORT, RPC port: $RPC_PORT. Console logs sent to ./$IDENTITY/console.log"
+    geth --datadir=./$IDENTITY --port=$PORT --rpcport=$RPC_PORT $FLAGS $DEV_FLAGS console 2>> ./$IDENTITY/console.log
+    ;;
+
+  connect)
+    IDENTITY1=$2
+    IDENTITY2=$3
+
+    ENODE=$(exec_on_node $IDENTITY1 'admin.nodeInfo.enode')
+    CONNECT_JS="admin.addPeer($ENODE)"
+
+    exec_on_node $IDENTITY2 $CONNECT_JS
+    ;;
+
+  help)
+    echo "$USAGE"
+    ;;
+
+  *)
+    echo "Command '$CMD' not recognized!"
+    echo "$USAGE"
+    exit -1
+  ;;
+esac
