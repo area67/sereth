@@ -48,7 +48,7 @@ type RPCTransaction struct {
 }
 
 type TransactionObject struct {
-	hash, fromAddress, functionName, mark, val, oldMark []byte
+	hash, fromAddress, inputAddress, functionName, mark, val, oldMark []byte
 	nextTxn                                             []*TransactionObject
 	prevTxn                                             *TransactionObject
 }
@@ -90,6 +90,11 @@ fromAddress: common.FromHex("0x0000000000000000000000000000000000000000000000000
 val: common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"),
 nextTxn: make([]*TransactionObject, 0, 100)}*/
 
+var inAddrRC []byte = common.FromHex("0x0000000000000000000000000000000000000000000000000000000000077777")
+var inAddrRU []byte = common.FromHex("0x0000000000000000000000000000000000000000000000000000000000088888")
+var specialMark []byte = common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000")
+var specialVal []byte = common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")
+
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
 func newRPCPendingTransaction(tx *types.Transaction) *RPCTransaction {
 	return newRPCTransaction(tx, common.Hash{}, 0, 0)
@@ -109,7 +114,7 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 }
 
 //Parse the payload and filter out unrelated transactions
-func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte, RAATransactionVal []byte, txns []*RPCTransaction) ([]TransactionObject, *TransactionObject) {
+func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
 	//Create a slice that will contain all filtered transactions
 	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
@@ -117,24 +122,20 @@ func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte
 	}
 
 	var inputArray = make([]TransactionObject, len(txns))
-	var RAATransaction *TransactionObject
 	var k int = 0
-	var highestNonce hexutil.Uint64
 
 	//Decode transaction payloads
 	for i := 0; i < len(txns); i++ {
 		var txn = txns[i]
 		var data = txn.Input
 
-		if len(data) < 196 {
+		if len(data) < 100 {
 			continue
 		}
 
 		var name []byte = data[0:4]
 		var oldMark []byte = data[36:68]
 		var val []byte = data[68:100]
-		var raaMark []byte = data[132:164]
-		var raaVal []byte = data[164:196]
 
 		sig := hex.EncodeToString(name)
 		_, ferr = f.WriteString(fmt.Sprintf("Parsing transaction\nVal: %x,\noldMark: %x\n", val, oldMark))
@@ -142,50 +143,33 @@ func parseTransactions(RAATransactionOldMark []byte, RAATransactionSender []byte
 		//Filter transactions and add them to our slice
 		// ourAddress := common.HexToAddress("0x48c1bdb954c945a57459286719e1a3c86305fd9e")
 		// var to = *txn.To
-		if sig == "6c58228a" || sig == "07173de5" || sig == "152227ad" || sig == "19608715" {
+		if sig == "d1602737" || sig == "3f91e238" {
 			// && bytes.Compare(to.Bytes(), ourAddress.Bytes()) == 0 {
 			var mark []byte = crypto.Keccak256(oldMark, val)
 			var address = txn.From.Bytes()
 			var paddedAddress = make([]byte, 32)
-			var specialMark []byte = common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000")
-			var specialVal []byte = common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")
 			copy(paddedAddress[32-len(address):], address)
 
-			var txnObj = TransactionObject{nil, paddedAddress, name, mark, val, oldMark, make([]*TransactionObject, 0, 100), nil}
+			var txnObj = TransactionObject{nil, paddedAddress, data[4:36], name, mark, val, oldMark, make([]*TransactionObject, 0, 100), nil}
 
-			//Do not add candidate RAA Transactions to the list, since we don't know which txn in the list we are looking for yet
-			if bytes.Compare(RAATransactionOldMark, oldMark) == 0 && bytes.Compare(RAATransactionVal, val) == 0 && bytes.Compare(RAATransactionSender, data[4:36]) == 0 {
-				if RAATransaction == nil || txn.Nonce > highestNonce {
-					highestNonce = txn.Nonce
-					RAATransaction = &txnObj
-				}
-				continue
-			}
-
-			//Filter out transactions that the anaylzer previously rejected
+			/*Filter out transactions that the anaylzer previously rejected
 			if bytes.Equal(oldMark, raaMark) && bytes.Equal(val, raaVal) || (bytes.Equal(specialMark, raaMark) && bytes.Equal(specialVal, raaVal)) {
+				inputArray[k] = txnObj
+				k = k + 1
+			}*/
+
+			//Filter out rejects
+			if bytes.Equal(data[4:36], inAddrRC) || bytes.Equal(data[4:36], inAddrRU) {
 				inputArray[k] = txnObj
 				k = k + 1
 			}
 		}
 	}
 
-	_, ferr = f.WriteString(fmt.Sprintf("Checking RAA Transaction: %p\n", RAATransaction))
-
-	if RAATransaction != nil {
-		_, ferr = f.WriteString(fmt.Sprintf("RAATransaction found\n"))
-		_, ferr = f.WriteString(fmt.Sprintf("Value %v\n", *RAATransaction))
-		//Add the RAA Transaction
-		inputArray[k] = *RAATransaction
-		k = k + 1
-	}
-
-	_, ferr = f.WriteString(fmt.Sprintf("Past RAA Check\n"))
-
 	f.Close()
 
 	//Return a slice the length of filtered values we obtained
-	return inputArray[0:k], RAATransaction
+	return inputArray[0:k]
 }
 
 func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObject, int) {
@@ -209,7 +193,7 @@ func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObje
 	var candidateHeads = make([]TransactionObject, 25)
 	var k int = 0
 	for i := 0; i < len(txns); i++ {
-		if txns[i].prevTxn == nil {
+		if bytes.Equal(txns[i].inputAddress, inAddrRC) {
 			candidateHeads[k] = txns[i]
 			k = k + 1
 		}
@@ -295,6 +279,16 @@ func isRAA(input []byte) bool {
 	return false
 }
 
+func findRecentSet(series []*TransactionObject) *TransactionObject {
+	for i:= len(series)-1; i >= 0; i-- {
+		if hex.EncodeToString(series[i].functionName) == "d1602737" {
+			return series[i]
+		}
+	}
+
+	return nil
+}
+
 func doRAA(input []byte, txP ContentFetcher) []byte {
 	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
@@ -345,21 +339,10 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 
 	//Slice such that length is equal to number of transactions in pending
 	txnList = txnList[0:i]
-	var RAATransactionOldMark []byte
-	var RAATransactionSender []byte
-	var RAATransactionVal []byte
-	if hex.EncodeToString(input[0:4]) == "19608715" {
-		_, ferr = f.WriteString("Call is requesting RAA for specific Transaction\n")
-		RAATransactionOldMark = input[36:68]
-		RAATransactionSender = input[4:36]
-		RAATransactionVal = input[68:100]
-	}
 
-	_, ferr = f.WriteString(fmt.Sprintf("parsing\n"))
-
-	var parsedList, RAATransaction = parseTransactions(RAATransactionOldMark, RAATransactionSender, RAATransactionVal, txnList)
+	var parsedList = parseTransactions(txnList)
 	_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d\n", len(parsedList)))
-	if len(parsedList) == 0 || (len(parsedList) == 1 && hex.EncodeToString(input[0:4]) == "19608715" && RAATransaction != nil) {
+	if len(parsedList) == 0 {
 		_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d, returning 0 RAA\n\n", len(parsedList)))
 		var defaults = [][]byte{common.FromHex("0x7261614164647265737300000000000000000000000000000000000000000000"), common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000"), common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")}
 		_, ferr = f.WriteString(fmt.Sprintf("defaults: %v\n", defaults))
@@ -377,17 +360,17 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 
 	//Get last touple from series
 	var n = series[seriesDepth-1]
+	var m = findRecentSet(series)
 	var array [][]byte
 
-	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %x\nval: %x\n", n.mark, n.val))
-
-	if RAATransaction != nil && isInSeries(RAATransaction, series[0:seriesDepth]) {
-		array = [][]byte{RAATransaction.fromAddress, RAATransaction.oldMark, RAATransaction.val}
-		_, ferr = f.WriteString(fmt.Sprintf("RAATransaction:\nmark: %x\nval: %x\nGuessMark: %x\n\n", RAATransaction.mark, RAATransaction.val, RAATransaction.oldMark))
+	if m == nil {
+		array = [][]byte{n.fromAddress, n.mark, specialVal}
 	} else {
-		array = [][]byte{n.fromAddress, n.mark, n.val}
-		_, ferr = f.WriteString(fmt.Sprintf("RAATransaction does not exist in TxPool, returning current tail\n\n"))
+		array = [][]byte{n.fromAddress, n.mark, m.val}
+		_, ferr = f.WriteString(fmt.Sprintf("Deepest set node:\nval: %x\n", m.val))
 	}
+
+	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %x\nval: %x\n", n.mark, n.val))
 
 	for i := 0; i < 3; i++ {
 		for k := 0; k < 32; k++ {
