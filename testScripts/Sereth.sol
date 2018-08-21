@@ -8,7 +8,8 @@ contract Sereth {
     bytes32 s1 = 'raaMark';
     bytes32 s2 = 0x0000000000000000000000000000000000000000000000000000000000000010;
     bytes32[3] p = [s0, s1, s2];
-    uint256 sold = 0;
+    uint256 nBuy = 0;
+    uint256 nSet = 0;
 
 // Mark, Set and Get are methods in the Hash-Mark-Set transactional data structure.
 
@@ -19,12 +20,10 @@ contract Sereth {
         // mark needs to match the intra-block mark, which is likely if obtained recently 
         if (keccak256(amv[1]) == keccak256(p[1])) { 
             // mark valid, set new mark and value
+            nSet++;
             p[0] = bytes32(msg.sender);
             p[1] = keccak256(amv[1], amv[2]);
             p[2] = amv[2];
-        }
-        else {
-            // mark not valid, nothing to do
         }
     }
     function get(bytes32[3] raa) public pure returns(bytes32) {
@@ -50,23 +49,21 @@ contract Sereth {
     function buy(bytes32[3] offer) public { 
         if ((keccak256(offer[1]) == keccak256(p[1])) && (keccak256(offer[2]) == keccak256(p[2]))) {
             // mark and price are valid: execute serialized buy order
-            sold++;
+            nBuy++;
             p[0] = bytes32(msg.sender);
             p[1] = keccak256(offer[1], offer[2]);
         }
     }
-/*
     function buyL(bytes32[3] offer) public { 
         if (keccak256(offer[2]) == keccak256(p[2])) {
             // price is valid: execute linearized buy order
-            sold++;
+            nBuy++;
             p[0] = bytes32(msg.sender);
             p[1] = keccak256(offer[1], offer[2]);
         }
     }
-*/
-    function qtySold() public view returns(uint256) {
-        return sold;
+    function nTX() public view returns(uint256, uint256) {
+        return (nBuy, nSet);
     }
 }
 
