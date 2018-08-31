@@ -146,7 +146,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, msg core.Message, state *sta
 
 	_, ferr = f.WriteString(fmt.Sprintf("api_backend.GetEVM -- txP  %T %p\n", txP, txP))
 
-	return vm.NewEVM(context, state, b.eth.chainConfig, vmCfg, txP), vmError, nil
+	return vm.NewEVM(context, state, b.eth.chainConfig, vmCfg, txP, true), vmError, nil
 }
 
 func (b *EthAPIBackend) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription {

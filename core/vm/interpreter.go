@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
         "log"
         "os"
-        //"strconv"
+        //"strings"
         "encoding/hex"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params"
@@ -127,17 +127,19 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	_, ferr = f.WriteString("\nIn Interpreter.run() with input: ")
 	_, ferr = f.WriteString(hex.EncodeToString(input))
 
-	if isRAA(input) {
-                if in.evm.txP != nil {
-                    txPersist = in.evm.txP
-                } else {
-                    in.evm.txP = txPersist
-                }
+	if in.evm.raaFlag {
+		if isRAA(input) {
+			if in.evm.txP != nil {
+			    txPersist = in.evm.txP
+			 } else {
+				in.evm.txP = txPersist
+			 }
 
-		if in.evm.txP != nil {
-			input = doRAA(input, in.evm.txP)
+			if in.evm.txP != nil {
+				input = doRAA(input, in.evm.txP)
+			}
 		}
-        }
+	}
 
 /*
         if len(input) >= 4 {
