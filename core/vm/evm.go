@@ -129,6 +129,7 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(ctx.BlockNumber),
                 txP:   txP,
+                raaFlag: raaFlag,
 	}
 
 	evm.interpreter = NewInterpreter(evm, vmConfig)
