@@ -1,16 +1,7 @@
-## Go Ethereum
+## Improving Block Commit Throughput of Concurrent Smart Contract Transactions
 
-Official golang implementation of the Ethereum protocol.
+Sereth is a fork of Geth, the Golang implementation of the Ethereum protocol.  Sereth clients may be run interoperably with standard Geth clients.   Sereth provides improved transaction throughput for use cases with frequent state changes.
 
-[![API Reference](
-https://camo.githubusercontent.com/915b7be44ada53c290eb157634330494ebe3e30a/68747470733a2f2f676f646f632e6f72672f6769746875622e636f6d2f676f6c616e672f6764646f3f7374617475732e737667
-)](https://godoc.org/github.com/ethereum/go-ethereum)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ethereum/go-ethereum)](https://goreportcard.com/report/github.com/ethereum/go-ethereum)
-[![Travis](https://travis-ci.org/ethereum/go-ethereum.svg?branch=master)](https://travis-ci.org/ethereum/go-ethereum)
-[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ethereum/go-ethereum?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-
-Automated builds are available for stable releases and the unstable master branch.
-Binary archives are published at https://geth.ethereum.org/downloads/.
 
 ## Building the source
 
