@@ -22,6 +22,10 @@ import (
 	"io"
 	"math/big"
 	"sync/atomic"
+	"os"
+	"log"
+	"fmt"
+	"bytes"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -319,6 +323,7 @@ func (s *TxByPrice) Pop() interface{} {
 type TransactionsByPriceAndNonce struct {
 	txs    map[common.Address]Transactions // Per account nonce-sorted list of transactions
 	heads  TxByPrice                       // Next transaction for each unique account (price heap)
+	series []*RPCTransaction	       // Next HMS transactions for all accounts
 	signer Signer                          // Signer for the set of transactions
 }
 
@@ -328,6 +333,30 @@ type TransactionsByPriceAndNonce struct {
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
 func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions) *TransactionsByPriceAndNonce {
+	f, ferr := os.OpenFile("/home/bitnami/miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+                log.Fatal("Cannot open file", ferr)
+        }
+
+	//Format data for analyzer
+	var txnList = make([]*RPCTransaction, 1000)
+        var i int = 0
+
+        for _, txs := range txs {
+		for _, tx := range txs {
+			txnList[i] = newRPCPendingTransaction(tx)
+                        i = i + 1
+                 }
+        }
+
+        //Slice such that length is equal to number of transactions in pending
+        txnList = txnList[0:i]
+	var txnSeries = series(txnList)
+
+	for i := 0; i < len(txnSeries); i++ {
+		_, ferr = f.WriteString(fmt.Sprintf("txnSeries[%d]: %x\n", i, txnSeries[i].Hash.Bytes()))
+	}
+
 	// Initialize a price based heap with the head transactions
 	heads := make(TxByPrice, 0, len(txs))
 	for from, accTxs := range txs {
@@ -345,7 +374,74 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	return &TransactionsByPriceAndNonce{
 		txs:    txs,
 		heads:  heads,
+		series: txnSeries,
 		signer: signer,
+	}
+}
+
+func (t *TransactionsByPriceAndNonce) PeekHMS() (*Transaction, int, bool) {
+	f, ferr := os.OpenFile("/home/bitnami/miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+                log.Fatal("Cannot open file", ferr)
+        }
+
+	_, ferr = f.WriteString(fmt.Sprintf("\nIn PeekHMS\n"))
+
+	if len(t.heads) == 0 {
+                return nil, 0, false
+        }
+
+	if len(t.series) > 0 {
+		var seriesNext = t.series[0].Hash.Bytes()
+
+		_, ferr = f.WriteString(fmt.Sprintf("Length of t.heads: %d\n", len(t.heads)))
+		_, ferr = f.WriteString(fmt.Sprintf("Next Series Hash: %x\n", seriesNext))
+
+		//Return the next HMS in series, if it is in the list of heads
+		for i:=0; i < len(t.heads); i++ {
+			var headNext = t.heads[i].Hash().Bytes()
+			_, ferr = f.WriteString(fmt.Sprintf("Next Head Hash: %x\n", headNext))
+
+			if bytes.Equal(headNext, seriesNext) {
+				_, ferr = f.WriteString(fmt.Sprintf("The next HMS txn has been found\n",))
+				return t.heads[i], i, true
+			}
+		}
+	}
+
+	_, ferr = f.WriteString(fmt.Sprintf("Next HMS txn not found in heads, moving onto next non-HMS txn\n"))
+
+        //Returns highest price  non-HMS transaction
+        for i:=0; i < len(t.heads); i++ {
+                if (!IsHMS(t.heads[i].Data())) {
+                        return t.heads[i], i, false
+                }
+        }
+
+	_, ferr = f.WriteString(fmt.Sprintf("No non-HMS txn found.\n"))
+
+        return nil, 0, false
+}
+
+func (t *TransactionsByPriceAndNonce) RemoveHMS(index int, shiftSeries bool) {
+        heap.Remove(&t.heads, index)
+
+	if shiftSeries {
+                t.series = t.series[1:]
+        }
+}
+
+func (t *TransactionsByPriceAndNonce) ShiftHMS(index int, shiftSeries bool) {
+        acc, _ := Sender(t.signer, t.heads[index])
+        if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
+                t.heads[index], t.txs[acc] = txs[0], txs[1:]
+                heap.Fix(&t.heads, index)
+        } else {
+                heap.Remove(&t.heads, index)
+        }
+
+	if shiftSeries {
+		t.series = t.series[1:]
 	}
 }
 
@@ -354,6 +450,7 @@ func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
 	if len(t.heads) == 0 {
 		return nil
 	}
+
 	return t.heads[0]
 }
 

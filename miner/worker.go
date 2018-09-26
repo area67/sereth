@@ -532,7 +532,7 @@ func (env *Work) commitTransactions(mux *event.TypeMux, txs *types.TransactionsB
 			break
 		}
 		// Retrieve the next transaction and abort if all done
-		tx := txs.Peek()
+		tx, index, shiftSeries := txs.PeekHMS()
 		if tx == nil {
 			break
 		}
@@ -546,7 +546,7 @@ func (env *Work) commitTransactions(mux *event.TypeMux, txs *types.TransactionsB
 		if tx.Protected() && !env.config.IsEIP155(env.header.Number) {
 			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", env.config.EIP155Block)
 
-			txs.Pop()
+			txs.RemoveHMS(index, shiftSeries)
 			continue
 		}
 		// Start executing the transaction
@@ -557,29 +557,29 @@ func (env *Work) commitTransactions(mux *event.TypeMux, txs *types.TransactionsB
 		case core.ErrGasLimitReached:
 			// Pop the current out-of-gas transaction without shifting in the next from the account
 			log.Trace("Gas limit exceeded for current block", "sender", from)
-			txs.Pop()
+			txs.RemoveHMS(index, shiftSeries)
 
 		case core.ErrNonceTooLow:
 			// New head notification data race between the transaction pool and miner, shift
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			txs.Shift()
+			txs.ShiftHMS(index, shiftSeries)
 
 		case core.ErrNonceTooHigh:
 			// Reorg notification data race between the transaction pool and miner, skip account =
 			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-			txs.Pop()
+			txs.RemoveHMS(index, shiftSeries)
 
 		case nil:
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
-			txs.Shift()
+			txs.ShiftHMS(index, shiftSeries)
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			txs.Shift()
+			txs.ShiftHMS(index, shiftSeries)
 		}
 	}
 
