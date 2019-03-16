@@ -129,7 +129,7 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 //Parse the payload and filter out unrelated transactions
 func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []TransactionObject) {
 	//Create a slice that will contain all filtered transactions
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -190,7 +190,7 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []Transacti
 }
 
 func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObject, int) {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -254,7 +254,7 @@ func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObje
 }
 
 func insertNonSeq(series []*TransactionObject, nonSeqList []TransactionObject) []*TransactionObject {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
                 log.Fatal("Cannot open file", ferr)
         }
@@ -345,7 +345,7 @@ func isInSeriesRPC(hash []byte, series []*RPCTransaction) bool {
 
 
 func IsRAA(input []byte) bool {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -391,7 +391,7 @@ func findRecentSet(series []*TransactionObject) *TransactionObject {
 }
 
 func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
