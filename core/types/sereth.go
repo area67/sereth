@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package types
 
 import (
 	"bytes"
@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"log"
 	"math/big"
@@ -49,18 +48,19 @@ type RPCTransaction struct {
 
 type TransactionObject struct {
 	hash, fromAddress, inputAddress, functionName, mark, val, oldMark []byte
+	rpc						    *RPCTransaction
 	nextTxn                                             []*TransactionObject
 	prevTxn                                             *TransactionObject
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *RPCTransaction {
-	var signer types.Signer = types.FrontierSigner{}
+func newRPCTransaction(tx *Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *RPCTransaction {
+	var signer Signer = FrontierSigner{}
 	if tx.Protected() {
-		signer = types.NewEIP155Signer(tx.ChainId())
+		signer = NewEIP155Signer(tx.ChainId())
 	}
-	from, _ := types.Sender(signer, tx)
+	from, _ := Sender(signer, tx)
 	v, r, s := tx.RawSignatureValues()
 
 	result := &RPCTransaction{
@@ -96,7 +96,7 @@ var specialMark []byte = common.FromHex("0x7261614d61726b00000000000000000000000
 var specialVal []byte = common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")
 
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
-func newRPCPendingTransaction(tx *types.Transaction) *RPCTransaction {
+func newRPCPendingTransaction(tx *Transaction) *RPCTransaction {
 	return newRPCTransaction(tx, common.Hash{}, 0, 0)
 }
 
@@ -107,6 +107,19 @@ func sliceAppend(slice []*TransactionObject, val *TransactionObject) []*Transact
 	return slice
 }
 
+/*func sliceInsert2(slice []*TransacionObject, val *TransactionObject, index int) {
+	slice = slice[0 : len(slice)+1]
+
+	var temp = slice[index]
+	for i:=index+1; i < len(slice) i++ {
+		var temp2 = slice[i]
+		slice[i] = slice[i-1]
+		temp = temp2
+	}
+	slice[index] = val
+	return slice
+}*/
+
 func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 	slice[len(slice)-1] = nil
 	slice = slice[0 : len(slice)-1]
@@ -114,14 +127,16 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 }
 
 //Parse the payload and filter out unrelated transactions
-func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
+func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []TransactionObject) {
 	//Create a slice that will contain all filtered transactions
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
 
 	var inputArray = make([]TransactionObject, len(txns))
+	var nonSeqArray =make([]TransactionObject, len(txns))
+	var j int = 0
 	var k int = 0
 
 	//Decode transaction payloads
@@ -143,14 +158,13 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
 		//Filter transactions and add them to our slice
 		// ourAddress := common.HexToAddress("0x48c1bdb954c945a57459286719e1a3c86305fd9e")
 		// var to = *txn.To
-		if sig == "d1602737" || sig == "3f91e238" {
-			// && bytes.Compare(to.Bytes(), ourAddress.Bytes()) == 0 {
+		if sig == "d1602737" || sig == "3f91e238" || sig == "c32bc356" {
 			var mark []byte = crypto.Keccak256(oldMark, val)
 			var address = txn.From.Bytes()
 			var paddedAddress = make([]byte, 32)
 			copy(paddedAddress[32-len(address):], address)
 
-			var txnObj = TransactionObject{nil, paddedAddress, data[4:36], name, mark, val, oldMark, make([]*TransactionObject, 0, 100), nil}
+			var txnObj = TransactionObject{nil, paddedAddress, data[4:36], name, mark, val, oldMark, txn, make([]*TransactionObject, 0, 100), nil}
 
 			/*Filter out transactions that the anaylzer previously rejected
 			if bytes.Equal(oldMark, raaMark) && bytes.Equal(val, raaVal) || (bytes.Equal(specialMark, raaMark) && bytes.Equal(specialVal, raaVal)) {
@@ -158,8 +172,11 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
 				k = k + 1
 			}*/
 
-			//Filter out rejects
-			if bytes.Equal(data[4:36], inAddrRC) || bytes.Equal(data[4:36], inAddrRU) {
+			if (sig == "3f91e238" || sig == "c32bc356") {
+				txnObj.mark = nil
+				nonSeqArray[j] = txnObj
+				j = j + 1
+			} else if bytes.Equal(data[4:36], inAddrRC) || bytes.Equal(data[4:36], inAddrRU) {
 				inputArray[k] = txnObj
 				k = k + 1
 			}
@@ -169,11 +186,11 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
 	f.Close()
 
 	//Return a slice the length of filtered values we obtained
-	return inputArray[0:k]
+	return inputArray[0:k], nonSeqArray[0:j]
 }
 
 func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObject, int) {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -190,10 +207,10 @@ func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObje
 	}
 
 	//Final all potential head values
-	var candidateHeads = make([]TransactionObject, 25)
+	var candidateHeads = make([]TransactionObject, len(txns))
 	var k int = 0
 	for i := 0; i < len(txns); i++ {
-		if bytes.Equal(txns[i].inputAddress, inAddrRC) {
+		if bytes.Equal(txns[i].inputAddress, inAddrRC) || bytes.Equal(txns[i].inputAddress, inAddrRU) {
 			candidateHeads[k] = txns[i]
 			k = k + 1
 		}
@@ -203,7 +220,9 @@ func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObje
 	_, ferr = f.WriteString(fmt.Sprintf("Number of candidate heads found: %d\n", k))
 
 	var longestChainDepth int = 0
+	var maxSeries []*TransactionObject
 	var seriesHead TransactionObject
+
 	var depth int = 1
         var path = make([]*TransactionObject, 0, 1000)
         var maxDepth int = 0
@@ -218,14 +237,74 @@ func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObje
 		findDeepestBranch(&candidateHeads[i], depth, &maxDepth, path, maxDepthPath[0:0])
 		maxDepthPath = maxDepthPath[0:maxDepth]
 
-		if depth > longestChainDepth {
+		if maxDepth > longestChainDepth {
+			_, ferr = f.WriteString(fmt.Sprintf("New longest chain found at index: %d: %d\n", i, maxDepth))
 			seriesHead = candidateHeads[i]
+			maxSeries = make([]*TransactionObject, maxDepth)
+			copy(maxSeries, maxDepthPath)
+			longestChainDepth = maxDepth
 		}
 	}
 
+	_, ferr = f.WriteString(fmt.Sprintf("Returning series of length: %d\n", len(maxSeries)))
+
 	f.Close()
 
-	return &seriesHead, maxDepthPath, maxDepth
+	return &seriesHead, maxSeries, longestChainDepth
+}
+
+func insertNonSeq(series []*TransactionObject, nonSeqList []TransactionObject) []*TransactionObject {
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if ferr != nil {
+                log.Fatal("Cannot open file", ferr)
+        }
+        defer f.Close()
+
+	_, ferr = f.WriteString(fmt.Sprintf("Entering insertNonSeq with list of length: %d\n", len(nonSeqList)))
+
+	if len(series) == 0 {
+		return series
+	}
+
+	for i:=0; i < len(nonSeqList); i++ {
+		var matchFound bool = false
+		var insertIndex int = 0
+		for j:=0; j < len(series); j++ {
+			if series[j].mark != nil && bytes.Equal(series[j].mark, nonSeqList[i].oldMark) {
+				matchFound = true
+				insertIndex = j
+				break
+			}
+		}
+
+		//Insert according to nonce
+		//If we did not find a place in the list for this transaction, place it at the front so that it may match with a txn in the previous block 
+                var k int
+                series = append(series, nil)
+
+		if matchFound == true || true {
+			k = insertIndex
+
+			_, ferr = f.WriteString(fmt.Sprintf("Match found at k = %d, length of series = %d", k, len(series)))
+			for k+1 < len(series) && series[k+1] != nil && series[k+1].mark == nil && series[k+1].rpc.Nonce < nonSeqList[i].rpc.Nonce {
+				k = k + 1
+			}
+			_, ferr = f.WriteString(fmt.Sprintf("Inserting at index = %d\n", k+1))
+			copy(series[k+2:], series[k+1:])
+			series[k+1] = &nonSeqList[i]
+		} else {
+			k = 0
+			_, ferr = f.WriteString(fmt.Sprintf("Match not found, k =  %d\n", k))
+			for k < len(series) && series[k] != nil && series[k].mark == nil && series[k].rpc.Nonce < nonSeqList[i].rpc.Nonce {
+				k = k + 1
+			}
+			_, ferr = f.WriteString(fmt.Sprintf("Inserting at k = %d\n", k))
+			copy(series[k+1:], series[k:])
+			series[k] = &nonSeqList[i]
+		}
+	}
+
+	return series
 }
 
 func findDeepestBranch(head *TransactionObject, depth int, maxDepth *int, path, maxDepthPath []*TransactionObject) {
@@ -255,8 +334,18 @@ func isInSeries(txn *TransactionObject, series []*TransactionObject) bool {
 	return false
 }
 
-func isRAA(input []byte) bool {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func isInSeriesRPC(hash []byte, series []*RPCTransaction) bool {
+        for i := 0; i < len(series); i++ {
+                if bytes.Equal(hash, series[i].Hash.Bytes()) {
+                        return true
+                }
+        }
+        return false
+}
+
+
+func IsRAA(input []byte) bool {
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -279,6 +368,18 @@ func isRAA(input []byte) bool {
 	return false
 }
 
+func IsHMS (input []byte) bool {
+	if len(input) >= 100 {
+                sig := hex.EncodeToString(input[0:4])
+                if sig == "d1602737" || sig == "3f91e238" {
+		   //     set                 buy
+                        return true
+                }
+        }
+
+        return false
+}
+
 func findRecentSet(series []*TransactionObject) *TransactionObject {
 	for i:= len(series)-1; i >= 0; i-- {
 		if hex.EncodeToString(series[i].functionName) == "d1602737" {
@@ -289,58 +390,13 @@ func findRecentSet(series []*TransactionObject) *TransactionObject {
 	return nil
 }
 
-func doRAA(input []byte, txP ContentFetcher) []byte {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
+	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
 
-	content := map[string]map[string]map[string]*RPCTransaction{
-		"pending": make(map[string]map[string]*RPCTransaction),
-		"queued":  make(map[string]map[string]*RPCTransaction),
-	}
-
-	pending, _ := txP.Content()
-
-	// Flatten the pending transactions
-	for account, txs := range pending {
-		dump := make(map[string]*RPCTransaction)
-		for _, tx := range txs {
-			dump[fmt.Sprintf("%d", tx.Nonce())] = newRPCPendingTransaction(tx)
-		}
-		content["pending"][account.Hex()] = dump
-	}
-	/*
-		// Flatten the queued transactions
-		for account, txs := range queue {
-			dump := make(map[string]*RPCTransaction)
-			for _, tx := range txs {
-				dump[fmt.Sprintf("%d", tx.Nonce())] = newRPCPendingTransaction(tx)
-			}
-			content["queued"][account.Hex()] = dump
-		}
-	*/
-	/*        for  _, txs := range pending {
-	          //dump := content["queued"][account.Hex()]
-	          for _, tx := range txs {
-	                   //_, ferr = f.Write([]byte(dump[fmt.Sprintf("%d", tx.Nonce())].Input)))
-	          }
-	  }*/
-
-	var txnList = make([]*RPCTransaction, 1000)
-	var i int = 0
-
-	for _, txs := range pending {
-		for _, tx := range txs {
-			txnList[i] = newRPCPendingTransaction(tx)
-			i = i + 1
-		}
-	}
-
-	//Slice such that length is equal to number of transactions in pending
-	txnList = txnList[0:i]
-
-	var parsedList = parseTransactions(txnList)
+	var parsedList, _ = parseTransactions(txnList)
 	_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d\n", len(parsedList)))
 	if len(parsedList) == 0 {
 		_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d, returning 0 RAA\n\n", len(parsedList)))
@@ -384,3 +440,19 @@ func doRAA(input []byte, txP ContentFetcher) []byte {
 
 	//End Anaylzer
 }
+
+//Return only the series as a list of RPCTransactions
+func series(txnList []*RPCTransaction) []*RPCTransaction {
+	var parsedList, seqList = parseTransactions(txnList)
+        var _, series, _ = findOrder(parsedList)
+	var fullSeries = insertNonSeq(series, seqList)
+	var rpcList = make([]*RPCTransaction,len(fullSeries))
+
+	for i := 0; i < len(fullSeries); i++ {
+		rpcList[i] = fullSeries[i].rpc
+	}
+
+	return rpcList
+
+}
+

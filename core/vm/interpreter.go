@@ -19,10 +19,14 @@ package vm
 import (
 	"fmt"
 	"sync/atomic"
-        "log"
-        "os"
-        //"strings"
-        "encoding/hex"
+    "log"
+    "os"
+    //"strconv"
+	"github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"math/big"
+    "encoding/hex"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -103,6 +107,42 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 	return nil
 }
 
+// newRPCTransaction returns a transaction that will serialize to the RPC
+// representation, with the given location metadata set (if available).
+func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *types.RPCTransaction {
+        var signer types.Signer = types.FrontierSigner{}
+        if tx.Protected() {
+                signer = types.NewEIP155Signer(tx.ChainId())
+        }
+        from, _ := types.Sender(signer, tx)
+        v, r, s := tx.RawSignatureValues()
+
+        result := &types.RPCTransaction{
+                From:     from,
+                Gas:      hexutil.Uint64(tx.Gas()),
+                GasPrice: (*hexutil.Big)(tx.GasPrice()),
+                Hash:     tx.Hash(),
+                Input:    hexutil.Bytes(tx.Data()),
+                Nonce:    hexutil.Uint64(tx.Nonce()),
+                To:       tx.To(),
+                Value:    (*hexutil.Big)(tx.Value()),
+                V:        (*hexutil.Big)(v),
+                R:        (*hexutil.Big)(r),
+                S:        (*hexutil.Big)(s),
+        }
+        if blockHash != (common.Hash{}) {
+                result.BlockHash = blockHash
+                result.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
+                result.TransactionIndex = hexutil.Uint(index)
+        }
+        return result
+}
+
+// newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
+func newRPCPendingTransaction(tx *types.Transaction) *types.RPCTransaction {
+        return newRPCTransaction(tx, common.Hash{}, 0, 0)
+}
+
 // Run loops and evaluates the contract's code with the given input data and returns
 // the return byte-slice and an error if one occurred.
 //
@@ -110,34 +150,38 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
-        f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
             log.Fatal("Cannot open file", ferr)
         }
         defer f.Close()
-        //_, ferr = f.WriteString("\nCall interpreter.go depth: ")
-        //_, ferr = f.WriteString(strconv.Itoa(in.evm.depth))
-        //_, ferr = f.WriteString(" with input\n")
-        //nbyte := bytes.IndexByte(input, 0)
-        //_, ferr = f.WriteString(hex.EncodeToString(input))
-        //err1 := ioutil.WriteFile("/home/bitnami/interpreter.out", msgb, 0644)
-        //if err1 != nil {
-        //    log.Fatal("Cannot create file", err1)
-        //}
 	_, ferr = f.WriteString("\nIn Interpreter.run() with input: ")
 	_, ferr = f.WriteString(hex.EncodeToString(input))
 
-	if in.evm.raaFlag {
-		if isRAA(input) {
-			if in.evm.txP != nil {
-			    txPersist = in.evm.txP
-			 } else {
-				in.evm.txP = txPersist
-			 }
+	if types.IsRAA(input) {
+                if in.evm.txP != nil {
+                    txPersist = in.evm.txP
+                } else {
+                    in.evm.txP = txPersist
+                }
 
-			if in.evm.txP != nil {
-				input = doRAA(input, in.evm.txP)
-			}
+		if in.evm.txP != nil {
+			pending, _ := in.evm.txP.Content()
+
+			var txnList = make([]*types.RPCTransaction, 1000)
+        		var i int = 0
+
+        		for _, txs := range pending {
+                		for _, tx := range txs {
+                        		txnList[i] = newRPCPendingTransaction(tx)
+                        		i = i + 1
+                		}
+        		}
+
+        		//Slice such that length is equal to number of transactions in pending
+        		txnList = txnList[0:i]
+
+			input = types.DoRAA(input, txnList)
 		}
 	}
 
