@@ -1,4 +1,5 @@
-# Read-Uncommitted Transactions for Smart Contract Performance, [ICDCS 2019](https://theory.utdallas.edu/ICDCS2019/)
+# Read-Uncommitted Transactions for Smart Contract Performance
+## [ICDCS 2019](https://theory.utdallas.edu/ICDCS2019/)
 
 ## Sereth
 
