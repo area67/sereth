@@ -27,7 +27,7 @@ type seriesNode struct {
 }
 
 //Constructor for seriesNode Objects
-func NewSeriesNode(TxnObj *TransactionObject) seriesNode {
+func NewSeriesNode() seriesNode {
 	n := seriesNode {
 		hash:			nil,
 		fromAddress:	nil,
