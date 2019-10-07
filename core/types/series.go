@@ -21,13 +21,24 @@ import (
 
 //Definition of seriesNode
 type seriesNode struct {
-	Next	[]*seriesNode			//Pointer to next nodes array
-	TxnObj	*TransactionObject		//Transaction Object
+	hash, fromAddress, inputAddress, functionName, mark, val, oldMark []byte	//Data fields
+	nextTxn                                             []*TransactionObject	//Array of any susequent transactions
+	prevTxn                                             *TransactionObject		//Pointer to previous transactions
 }
 
 //Constructor for seriesNode Objects
 func NewSeriesNode(TxnObj *TransactionObject) seriesNode {
-	n := seriesNode {nil, TxnObj}
+	n := seriesNode {
+		hash:			nil,
+		fromAddress:	nil,
+		inputAddress:	nil,
+		functionName:	nil,
+		mark:			nil,
+		val:			nil,
+		oldMark:		nil,
+		nextTxn:		nil,
+		prevTxn:		nil,
+	}
 	return n
 }
 
