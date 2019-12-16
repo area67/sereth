@@ -150,7 +150,7 @@ func newRPCPendingTransaction(tx *types.Transaction) *types.RPCTransaction {
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
-        f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
             log.Fatal("Cannot open file", ferr)
         }
@@ -160,7 +160,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
         //_, ferr = f.WriteString(" with input\n")
         //nbyte := bytes.IndexByte(input, 0)
         //_, ferr = f.WriteString(hex.EncodeToString(input))
-        //err1 := ioutil.WriteFile("/home/bitnami/interpreter.out", msgb, 0644)
+        //err1 := ioutil.WriteFile("/home/in3xes/interpreter.out", msgb, 0644)
         //if err1 != nil {
         //    log.Fatal("Cannot create file", err1)
         //}

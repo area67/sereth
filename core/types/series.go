@@ -15,22 +15,37 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package types
-//package main
 
 import (
     "bytes"
-    "strconv"
     "fmt"
+    "sync/atomic"
+    "unsafe"
+    "strconv"
+    "github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/crypto/sha3"
 )
+
+//Geth Transaction data type
+type STransaction struct {
+	data stxdata
+}
+
+type stxdata struct {
+	spayload      []byte
+	fromAddress   []byte
+}
 
 //Definition of seriesNode
 type seriesNode struct {
-	//Data fields
-	hash, fromAddress, inputAddress, functionName, mark, val,oldMark []byte
+    //Data fields
+    hash, fromAddress, inputAddress, functionName, mark, val,oldMark []byte
     //Array of any susequent transactions
     nextTxn                                             []*seriesNode
     //Pointer to previous transactions
     prevTxn                                             *seriesNode
+    //Node depth
+    depth                                               int
 }
 
 //Constructor for seriesNode Objects
@@ -43,35 +58,208 @@ func NewSeriesNode() seriesNode {
 		mark:			nil,
 		val:			nil,
 		oldMark:		nil,
-		nextTxn:		nil,
-		prevTxn:		nil,
+		nextTxn:		make([]*seriesNode, 20, 20),
+        prevTxn:		nil,
+        depth:          -1,
 	}
 	return n
 }
 
 //Definition of Series
 type Series struct {
-	Head *seriesNode
+    Head *seriesNode
+    Tail *seriesNode
+    Pool []*seriesNode
+    RawPool [][]*seriesNode
 }
 
 //Constructor for Series Objects
-func newSeries() Series {
-	s := Series{nil}
+func newSeries(numThreads int) Series {
+	s := Series{nil, nil, nil, make([][]*seriesNode, numThreads)}
 	return s
+}
+
+func (s *Series) parseTxPool(txns []*STransaction, tid int, num_threads int) {
+    interval := len(txns)/num_threads
+    start_index := interval * tid
+
+	//Decode transaction payloads
+	for i := start_index; i < start_index+interval; i++ {
+		txn := txns[i]
+
+		data := txn.data.spayload
+
+		if len(data) < 100 {
+			continue
+		}
+
+        var name []byte = data[0:4]
+        var addr []byte = data[4:36]
+		var oldMark []byte = data[36:68]
+        var val []byte = data[68:100]
+
+		//Check function signature
+	if bytes.Equal(name, common.FromHex("d1602737")) || bytes.Equal(name, common.FromHex("3f91e238")) || bytes.Equal(name, common.FromHex("c32bc356")) {
+            var txnObj = NewSeriesNode()
+            txnObj.hash = common.FromHex(strconv.Itoa(i))
+            txnObj.val = val
+            txnObj.oldMark = oldMark
+            txnObj.mark = Keccak256(oldMark, val)
+            txnObj.inputAddress = addr
+	    txnObj.functionName = name
+	    txnObj.fromAddress = txn.data.fromAddress
+
+            s.RawPool[tid] = append(s.RawPool[tid], &txnObj)
+		}
+    }
 }
 
 /*Insert should add a seriesNode to the series at the appropriate
  *location in the tree
  */
-func (s Series) InsertTxn(n seriesNode) bool {
-	return false
+func (s *Series) InsertTxn(n *seriesNode) bool {
+
+    //parent := s.Head.findParent(n)
+    parent := s.findParent(n)
+    n.prevTxn = parent
+
+    if parent == nil {
+        return false;
+    }
+
+    for {
+        for i, _ := range parent.nextTxn {
+            item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])))
+            if item == nil {
+                ret := atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])), item, unsafe.Pointer(n))
+                
+                if ret {
+                    return true;
+                }
+            }
+        }
+    }
 }
 
-// Insert a node in the nextTxn
-func (s seriesNode) Insert(n *seriesNode) bool {
-    s.nextTxn = append(s.nextTxn, n);
-    n.prevTxn = &s
-    return true
+func (s *Series) findParent(new_node *seriesNode) (*seriesNode) {
+    node := s.findParentFromPool(new_node)
+
+    if (node == nil) {
+        node = s.findParentFromDag(new_node, s.Head)
+    }
+
+    return node
+}
+
+func (s *Series) findParentFromDag(new_node *seriesNode, candidate *seriesNode) (*seriesNode) {
+
+    if bytes.Equal(new_node.oldMark, candidate.mark) {
+        return candidate
+    }
+
+    for i, _ := range candidate.nextTxn {
+        item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&candidate.nextTxn[i])))
+        if item != nil {
+            parent := s.findParentFromDag(new_node, candidate)
+
+            if parent != nil {
+                return parent
+            }
+        }
+    }
+
+    return nil
+}
+
+func (s *Series) findParentFromPool(new_node *seriesNode) (*seriesNode) {
+    for i,_ := range s.Pool {
+        item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.Pool[i])))
+        
+        if bytes.Equal(new_node.oldMark, (*seriesNode)(item).mark) {
+            return (*seriesNode)(item)
+        }
+    }
+
+    return nil
+}
+
+
+func (s *seriesNode) findMaxDepth() int {
+
+    if len(s.nextTxn) == 0 {
+        return 0
+    }
+
+    maxDepth := 0
+    for i, _ := range s.nextTxn {
+	item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.nextTxn[i])))
+	if item != nil {
+		maxDepth = max(maxDepth, (*seriesNode)(item).findMaxDepth())
+	}
+    }
+
+    return maxDepth + 1
+}
+
+/*(The default heuristic is to return the transaction at the end of
+ *the longest branch)
+ */
+ /*
+func (s *seriesNode) getTailOfSeries(currentDepth int, maxDepth int, result []*seriesNode) []*seriesNode {
+
+    // fmt.Println(currentDepth, s.nextTxn)
+
+    if currentDepth == maxDepth {
+        result = append(result, s)
+
+        return result
+    }
+
+    if len(s.nextTxn) == 0 {
+        return result
+    }
+
+    for i, _ := range s.nextTxn {
+	item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.nextTxn[i])))
+	if item != nil {
+		result = (*seriesNode)(item).getTailOfSeries(currentDepth + 1, maxDepth, result)
+		if(len(result) > 0) {
+			return result
+		}
+	}
+    }
+
+    for _, n := range s.nextTxn {
+        result = n.getTailOfSeries(currentDepth + 1, maxDepth, result)
+    } 
+
+    return result
+}
+*/
+
+func (s *seriesNode) getTailOfSeries(currentDepth int) (int, *seriesNode) {
+
+    var depth int
+    var res *seriesNode
+    depth = currentDepth
+    res = s
+    for i, _ := range s.nextTxn {
+	item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.nextTxn[i])))
+	if item != nil {
+		var d, r = (*seriesNode)(item).getTailOfSeries(currentDepth + 1)
+		if(d > depth) {
+			depth = d
+			res = r
+		}
+	}
+    }
+
+    return depth, res
+}
+
+
+func printSlice(s []*seriesNode) {
+	fmt.Printf("len=%d cap=%d %v\n", len(s), cap(s), s)
 }
 
 func max(a, b int) int {
@@ -81,148 +269,11 @@ func max(a, b int) int {
     return b
 }
 
-func (s seriesNode) findParent(data []byte, parent []*seriesNode) ([]*seriesNode) {
-
-    if bytes.Equal(data, s.hash) {
-        parent = append(parent, s.prevTxn)
-
-        return parent
-    }
-
-    for _, n := range s.nextTxn {
-        if len(parent) == 0 {
-             parent = n.findParent(data, parent)
-        } else {
-            return parent
-        }
-
-    }
-
-    return parent
+func Keccak256(data ...[]byte) []byte {
+	d := sha3.New256()
+	for _, b := range data {
+		d.Write(b)
+	}
+	return d.Sum(nil)
 }
 
-
-func (s seriesNode) findMaxDepth() int {
-
-    if len(s.nextTxn) == 0 {
-        return 0
-    }
-
-    maxDepth := 0
-    for _, n := range s.nextTxn {
-        maxDepth = max(maxDepth, n.findMaxDepth())
-    }
-
-    return maxDepth + 1
-}
-
-/*Returns the transaction at the end of the series according to the 
- *desired heuristic
- */
-
-/*(The default heuristic is to return the transaction at the end of
- *the longest branch)
- */
-func (s seriesNode) getTailOfSeries(currentDepth int, maxDepth int, result []*seriesNode) []*seriesNode {
-
-    // fmt.Println(currentDepth, s.nextTxn)
-
-    if currentDepth == maxDepth {
-        result = append(result, &s)
-
-        return result
-    }
-
-    if len(s.nextTxn) == 0 {
-        return result
-    }
-
-    for _, n := range s.nextTxn {
-        result = n.getTailOfSeries(currentDepth + 1, maxDepth, result)
-    }
-
-    return result
-}
-
-func printSlice(s []*seriesNode) {
-	fmt.Printf("len=%d cap=%d %v\n", len(s), cap(s), s)
-}
-
-func main() {
-    fmt.Println("in main")
-
-    var nodes []*seriesNode
-    for i:=0; i < 10; i++ {
-        n := NewSeriesNode();
-        n.hash = append(n.hash, []byte(strconv.Itoa(i))[0])
-        nodes = append(nodes, &n)
-        fmt.Printf("%d:%p\n", i, &n)
-    }
-
-    // fmt.Println("nodes", nodes)
-
-    // build the tree
-    node1 := NewSeriesNode()
-    fmt.Println("node 1", nodes[0])
-    node1.nextTxn = append(node1.nextTxn, nodes[0])
-    node1.nextTxn = append(node1.nextTxn, nodes[1])
-    node1.nextTxn = append(node1.nextTxn, nodes[2])
-    nodes[0].prevTxn = &node1
-    nodes[1].prevTxn = &node1
-    nodes[2].prevTxn = &node1
-    printSlice(node1.nextTxn)
-
-    node2 := node1.nextTxn[1]
-    node2.nextTxn = append(node2.nextTxn, nodes[3])
-    node2.nextTxn = append(node2.nextTxn, nodes[4])
-    nodes[3].prevTxn = node2
-    nodes[4].prevTxn = node2
-    printSlice(node2.nextTxn)
-
-    node3 := node2.nextTxn[0]
-    node3.nextTxn = append(node3.nextTxn, nodes[5])
-    node3.nextTxn = append(node3.nextTxn, nodes[6])
-    nodes[5].prevTxn = node3
-    nodes[6].prevTxn = node3
-    printSlice(node3.nextTxn)
-
-    node4 := node2.nextTxn[1]
-    node4.nextTxn = append(node4.nextTxn, nodes[7])
-    nodes[7].prevTxn = node4
-    printSlice(node4.nextTxn)
-
-    node5 := node4.nextTxn[0]
-    node5.nextTxn = append(node5.nextTxn, nodes[8])
-    nodes[8].prevTxn = node5
-    printSlice(node5.nextTxn)
-
-   fmt.Println("node5", &nodes[5])
-   fmt.Println("node6", &nodes[6])
-   fmt.Println("node7", &nodes[7])
-
-    fmt.Println("node8", &nodes[8])
-    series_ := newSeries()
-
-    series_.Head = &node1
-    fmt.Println("series", series_)
-
-    m := node1.findMaxDepth();
-    fmt.Println("max depth", m)
-    var tails []*seriesNode
-    tails = node1.getTailOfSeries(0, 3, tails)
-    fmt.Println("tails", tails)
-
-    d := node4.hash
-    var parent []*seriesNode
-    parent = node1.findParent(d, parent)
-    fmt.Println("parent", parent)
-    fmt.Println("node2", node4)
-
-    m1 := parent[0].findMaxDepth();
-    fmt.Println("max depth", m1)
-    var tails1 []*seriesNode
-    tails1 = parent[0].getTailOfSeries(0, 3, tails1)
-    fmt.Println("tails1", tails1)
-
-    //node9 := nodes[9]
-}

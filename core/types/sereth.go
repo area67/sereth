@@ -114,15 +114,16 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 }
 
 //Parse the payload and filter out unrelated transactions
-func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
+func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []*STransaction) {
 	//Create a slice that will contain all filtered transactions
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
 
 	var inputArray = make([]TransactionObject, len(txns))
 	var k int = 0
+	var rawPool []*STransaction
 
 	//Decode transaction payloads
 	for i := 0; i < len(txns); i++ {
@@ -162,18 +163,28 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject) {
 			if bytes.Equal(data[4:36], inAddrRC) || bytes.Equal(data[4:36], inAddrRU) {
 				inputArray[k] = txnObj
 				k = k + 1
+
+				d := stxdata { spayload: nil}
+				n := STransaction { data: d }
+				d.spayload = data;
+				d.fromAddress = paddedAddress
+				n.data = d;
+				rawPool = append(rawPool, &n);
 			}
 		}
 	}
 
+	_, ferr = f.WriteString(fmt.Sprintf("Size of rawPool : %d\n", len(rawPool)))
+
+
 	f.Close()
 
 	//Return a slice the length of filtered values we obtained
-	return inputArray[0:k]
+	return inputArray[0:k], rawPool
 }
 
 func findOrder(txns []TransactionObject) (*TransactionObject, []*TransactionObject, int) {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -256,7 +267,7 @@ func isInSeries(txn *TransactionObject, series []*TransactionObject) bool {
 }
 
 func IsRAA(input []byte) bool {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
@@ -301,13 +312,25 @@ func findRecentSet(series []*TransactionObject) *TransactionObject {
 	return nil
 }
 
+func findRecentSetS(series []*seriesNode) *seriesNode {
+	for i:= len(series)-1; i >= 0; i-- {
+		if hex.EncodeToString(series[i].functionName) == "d1602737" {
+			return series[i]
+		}
+	}
+
+	return nil
+}
+
+
 func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
 		log.Fatal("Cannot open file", ferr)
 	}
 
-	var parsedList = parseTransactions(txnList)
+	var parsedList, rawPool = parseTransactions(txnList)
+
 	_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d\n", len(parsedList)))
 	if len(parsedList) == 0 {
 		_, ferr = f.WriteString(fmt.Sprintf("Parsed list length: %d, returning 0 RAA\n\n", len(parsedList)))
@@ -321,6 +344,7 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 		return input
 	}
 
+	/*
 	var head, series, seriesDepth = findOrder(parsedList)
 
 	_, ferr = f.WriteString(fmt.Sprintf("Head node:\nmark: %x\nval: %x\n", head.mark, head.val))
@@ -329,7 +353,6 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 	var n = series[seriesDepth-1]
 	var m = findRecentSet(series)
 	var array [][]byte
-
 	if m == nil {
 		array = [][]byte{n.fromAddress, n.mark, specialVal}
 	} else {
@@ -337,7 +360,41 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 		_, ferr = f.WriteString(fmt.Sprintf("Deepest set node:\nval: %x\n", m.val))
 	}
 
-	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %x\nval: %x\n", n.mark, n.val))
+	*/
+
+	var dag = newSeries(1)
+	dag.parseTxPool(rawPool, 0, 1)
+	dag.Head = dag.RawPool[0][0]
+
+	for i := 1; i < len(dag.RawPool[0]); i++ {
+		dag.InsertTxn(dag.RawPool[0][i])
+		_, ferr = f.WriteString(fmt.Sprintf("Transaction inserted %x\n", dag.RawPool[0][i].mark))
+	}
+
+
+	var depth, result = dag.Head.getTailOfSeries(0)
+	_, ferr = f.WriteString(fmt.Sprintf("Max depth %d\n", depth))
+	var m = result
+	var array [][]byte
+
+
+	if m == nil {
+		array = [][]byte{m.fromAddress, m.mark, specialVal}
+	} else {
+		array = [][]byte{m.fromAddress, m.mark, m.val}
+		_, ferr = f.WriteString(fmt.Sprintf("Deepest set node:\nval: %x\n", m.val))
+	}
+
+	_, ferr = f.WriteString(fmt.Sprintf("Deepest node:\nmark: %x\nval: %x\n", m.mark, m.val))
+
+	/*
+	_, ferr = f.WriteString(fmt.Sprintf("RAA: %x\n\n\n", input))
+	_, ferr = f.WriteString(fmt.Sprintf("Array length: %d\n\n\n", len(array)))
+	_, ferr = f.WriteString(fmt.Sprintf("Array length 0: %d\n\n\n", len(array[0])))
+	_, ferr = f.WriteString(fmt.Sprintf("Array length 1: %d\n\n\n", len(array[1])))
+	_, ferr = f.WriteString(fmt.Sprintf("Array length 2: %d\n\n\n", len(array[2])))
+	*/
+
 
 	for i := 0; i < 3; i++ {
 		for k := 0; k < 32; k++ {
@@ -354,7 +411,7 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 
 //Return only the series as a list of RPCTransactions
 func series(txnList []*RPCTransaction) []*RPCTransaction {
-	var parsedList = parseTransactions(txnList)
+	var parsedList, _ = parseTransactions(txnList)
         var _, series, _ = findOrder(parsedList)
 	var rpcList = make([]*RPCTransaction,len(series))
 
