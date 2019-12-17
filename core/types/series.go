@@ -21,37 +21,39 @@ import (
     "fmt"
     "sync/atomic"
     "unsafe"
-    "strconv"
+    //"strconv"
     "github.com/ethereum/go-ethereum/common"
     "github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
 //Geth Transaction data type
-type STransaction struct {
-	data stxdata
+/*
+type Transaction struct {
+	data txdata
 }
 
-type stxdata struct {
-	spayload      []byte
+type txdata struct {
+	Payload      []byte
 	fromAddress   []byte
 }
+*/
 
 //Definition of seriesNode
 type seriesNode struct {
     //Data fields
-    hash, fromAddress, inputAddress, functionName, mark, val,oldMark []byte
+    fromAddress, inputAddress, functionName, mark, val,oldMark []byte
     //Array of any susequent transactions
     nextTxn                                             []*seriesNode
     //Pointer to previous transactions
     prevTxn                                             *seriesNode
     //Node depth
     depth                                               int
+    hash                                                atomic.Value
 }
 
 //Constructor for seriesNode Objects
 func NewSeriesNode() seriesNode {
 	n := seriesNode {
-		hash:			nil,
 		fromAddress:	nil,
 		inputAddress:	nil,
 		functionName:	nil,
@@ -78,7 +80,7 @@ func newSeries(numThreads int) Series {
 	return s
 }
 
-func (s *Series) parseTxPool(txns []*STransaction, tid int, num_threads int) {
+func (s *Series) parseTxPool(txns []*Transaction, tid int, num_threads int) {
     interval := len(txns)/num_threads
     start_index := interval * tid
     end_index := start_index+interval
@@ -91,7 +93,7 @@ func (s *Series) parseTxPool(txns []*STransaction, tid int, num_threads int) {
 	for i := start_index; i < end_index; i++ {
 		txn := txns[i]
 
-		data := txn.data.spayload
+		data := txn.data.Payload
 
 		if len(data) < 100 {
 			continue
@@ -105,13 +107,13 @@ func (s *Series) parseTxPool(txns []*STransaction, tid int, num_threads int) {
 		//Check function signature
 	if bytes.Equal(name, common.FromHex("d1602737")) || bytes.Equal(name, common.FromHex("3f91e238")) || bytes.Equal(name, common.FromHex("c32bc356")) {
             var txnObj = NewSeriesNode()
-            txnObj.hash = common.FromHex(strconv.Itoa(i))
+            txnObj.hash = txn.hash //common.FromHex(strconv.Itoa(i))
             txnObj.val = val
             txnObj.oldMark = oldMark
             txnObj.mark = Keccak256(oldMark, val)
             txnObj.inputAddress = addr
 	    txnObj.functionName = name
-	    txnObj.fromAddress = txn.data.fromAddress
+	    //txnObj.fromAddress = txn.data.fromAddress
 
             s.RawPool[tid] = append(s.RawPool[tid], &txnObj)
 		}
@@ -134,9 +136,13 @@ func (s *Series) InsertTxn(n *seriesNode) bool {
     for {
         for i, _ := range parent.nextTxn {
             item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])))
+            if item != nil && (*seriesNode)(item).hash == n.hash {
+                fmt.Println("Returning after dupe txn")
+                return false
+            }
             if item == nil {
                 ret := atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])), item, unsafe.Pointer(n))
-                
+
                 if ret {
                     return true;
                 }

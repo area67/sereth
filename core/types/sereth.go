@@ -95,6 +95,9 @@ var inAddrRU []byte = common.FromHex("0x0000000000000000000000000000000000000000
 var specialMark []byte = common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000")
 var specialVal []byte = common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000")
 
+var dag = newSeries(1)
+
+
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
 func newRPCPendingTransaction(tx *Transaction) *RPCTransaction {
 	return newRPCTransaction(tx, common.Hash{}, 0, 0)
@@ -114,7 +117,7 @@ func sliceDelete(slice []*TransactionObject) []*TransactionObject {
 }
 
 //Parse the payload and filter out unrelated transactions
-func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []*STransaction) {
+func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []*Transaction) {
 	//Create a slice that will contain all filtered transactions
 	f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if ferr != nil {
@@ -123,7 +126,7 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []*STransac
 
 	var inputArray = make([]TransactionObject, len(txns))
 	var k int = 0
-	var rawPool []*STransaction
+	var rawPool []*Transaction
 
 	//Decode transaction payloads
 	for i := 0; i < len(txns); i++ {
@@ -164,10 +167,10 @@ func parseTransactions(txns []*RPCTransaction) ([]TransactionObject, []*STransac
 				inputArray[k] = txnObj
 				k = k + 1
 
-				d := stxdata { spayload: nil}
-				n := STransaction { data: d }
-				d.spayload = data;
-				d.fromAddress = paddedAddress
+				d := txdata { Payload: nil}
+				n := Transaction { data: d }
+				d.Payload = data;
+				//d.fromAddress = paddedAddress
 				n.data = d;
 				rawPool = append(rawPool, &n);
 			}
@@ -362,13 +365,18 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 
 	*/
 
-	var dag = newSeries(1)
 	dag.parseTxPool(rawPool, 0, 1)
 	dag.Head = dag.RawPool[0][0]
 
 	for i := 1; i < len(dag.RawPool[0]); i++ {
-		dag.InsertTxn(dag.RawPool[0][i])
-		_, ferr = f.WriteString(fmt.Sprintf("Transaction inserted %x\n", dag.RawPool[0][i].mark))
+		var res = dag.InsertTxn(dag.RawPool[0][i])
+		if(res) {
+			_, ferr = f.WriteString(fmt.Sprintf("Transaction inserted %x\n", dag.RawPool[0][i].mark))
+		} else {
+			_, ferr = f.WriteString(fmt.Sprintf("Transaction insertion failed %x\n", dag.RawPool[0][i].mark))
+		}
+
+
 	}
 
 
@@ -379,9 +387,9 @@ func DoRAA(input []byte, txnList []*RPCTransaction) []byte {
 
 
 	if m == nil {
-		array = [][]byte{m.fromAddress, m.mark, specialVal}
+		array = [][]byte{m.inputAddress, m.mark, specialVal}
 	} else {
-		array = [][]byte{m.fromAddress, m.mark, m.val}
+		array = [][]byte{m.inputAddress, m.mark, m.val}
 		_, ferr = f.WriteString(fmt.Sprintf("Deepest set node:\nval: %x\n", m.val))
 	}
 
