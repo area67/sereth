@@ -69,22 +69,26 @@ func NewSeriesNode() seriesNode {
 type Series struct {
     Head *seriesNode
     Tail *seriesNode
-    Pool []*seriesNode
     RawPool [][]*seriesNode
 }
 
 //Constructor for Series Objects
 func newSeries(numThreads int) Series {
-	s := Series{nil, nil, nil, make([][]*seriesNode, numThreads)}
+	s := Series{nil, nil, make([][]*seriesNode, numThreads)}
 	return s
 }
 
 func (s *Series) parseTxPool(txns []*STransaction, tid int, num_threads int) {
     interval := len(txns)/num_threads
     start_index := interval * tid
+    end_index := start_index+interval
+
+    if tid == num_threads - 1 {
+	end_index = len(txns)
+    }
 
 	//Decode transaction payloads
-	for i := start_index; i < start_index+interval; i++ {
+	for i := start_index; i < end_index; i++ {
 		txn := txns[i]
 
 		data := txn.data.spayload
@@ -139,6 +143,8 @@ func (s *Series) InsertTxn(n *seriesNode) bool {
             }
         }
     }
+
+    return false;
 }
 
 func (s *Series) findParent(new_node *seriesNode) (*seriesNode) {
@@ -160,7 +166,7 @@ func (s *Series) findParentFromDag(new_node *seriesNode, candidate *seriesNode) 
     for i, _ := range candidate.nextTxn {
         item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&candidate.nextTxn[i])))
         if item != nil {
-            parent := s.findParentFromDag(new_node, candidate)
+            parent := s.findParentFromDag(new_node, (*seriesNode)(item))
 
             if parent != nil {
                 return parent
@@ -171,6 +177,7 @@ func (s *Series) findParentFromDag(new_node *seriesNode, candidate *seriesNode) 
     return nil
 }
 
+/*
 func (s *Series) findParentFromPool(new_node *seriesNode) (*seriesNode) {
     for i,_ := range s.Pool {
         item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.Pool[i])))
@@ -183,6 +190,37 @@ func (s *Series) findParentFromPool(new_node *seriesNode) (*seriesNode) {
     return nil
 }
 
+*/
+
+func (s *Series) findParentFromPool(new_node *seriesNode) (*seriesNode) {
+    for i,_ := range s.RawPool {
+        for k,_ := range s.RawPool[i] {
+            item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.RawPool[i][k])))
+
+            if bytes.Equal(new_node.oldMark, (*seriesNode)(item).mark) {
+                return (*seriesNode)(item)
+            }
+        }
+    }
+
+    return nil
+}
+
+func (s *Series) verifyTree(curr *seriesNode, count *int) {
+    if curr.prevTxn != nil && !bytes.Equal(curr.prevTxn.mark, curr.oldMark) {
+        fmt.Println("Error, unmatching nodes")
+        return
+    }
+
+    (*count)++
+
+    for i, _ := range curr.nextTxn {
+        item := curr.nextTxn[i]
+        if item != nil {
+            s.verifyTree(item, count)
+        }
+    }
+}
 
 func (s *seriesNode) findMaxDepth() int {
 
