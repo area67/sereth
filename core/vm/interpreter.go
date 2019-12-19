@@ -22,10 +22,7 @@ import (
         "log"
         "os"
         //"strconv"
-	"github.com/ethereum/go-ethereum/common"
-        "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"math/big"
         "encoding/hex"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params"
@@ -107,42 +104,6 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 	return nil
 }
 
-// newRPCTransaction returns a transaction that will serialize to the RPC
-// representation, with the given location metadata set (if available).
-func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *types.RPCTransaction {
-        var signer types.Signer = types.FrontierSigner{}
-        if tx.Protected() {
-                signer = types.NewEIP155Signer(tx.ChainId())
-        }
-        from, _ := types.Sender(signer, tx)
-        v, r, s := tx.RawSignatureValues()
-
-        result := &types.RPCTransaction{
-                From:     from,
-                Gas:      hexutil.Uint64(tx.Gas()),
-                GasPrice: (*hexutil.Big)(tx.GasPrice()),
-                Hash:     tx.Hash(),
-                Input:    hexutil.Bytes(tx.Data()),
-                Nonce:    hexutil.Uint64(tx.Nonce()),
-                To:       tx.To(),
-                Value:    (*hexutil.Big)(tx.Value()),
-                V:        (*hexutil.Big)(v),
-                R:        (*hexutil.Big)(r),
-                S:        (*hexutil.Big)(s),
-        }
-        if blockHash != (common.Hash{}) {
-                result.BlockHash = blockHash
-                result.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
-                result.TransactionIndex = hexutil.Uint(index)
-        }
-        return result
-}
-
-// newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
-func newRPCPendingTransaction(tx *types.Transaction) *types.RPCTransaction {
-        return newRPCTransaction(tx, common.Hash{}, 0, 0)
-}
-
 // Run loops and evaluates the contract's code with the given input data and returns
 // the return byte-slice and an error if one occurred.
 //
@@ -150,95 +111,42 @@ func newRPCPendingTransaction(tx *types.Transaction) *types.RPCTransaction {
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
-        f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-        if ferr != nil {
-            log.Fatal("Cannot open file", ferr)
-        }
-        defer f.Close()
-        //_, ferr = f.WriteString("\nCall interpreter.go depth: ")
-        //_, ferr = f.WriteString(strconv.Itoa(in.evm.depth))
-        //_, ferr = f.WriteString(" with input\n")
-        //nbyte := bytes.IndexByte(input, 0)
-        //_, ferr = f.WriteString(hex.EncodeToString(input))
-        //err1 := ioutil.WriteFile("/home/in3xes/interpreter.out", msgb, 0644)
-        //if err1 != nil {
-        //    log.Fatal("Cannot create file", err1)
-        //}
+	f, ferr := os.OpenFile("../../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if ferr != nil {
+		log.Fatal("Cannot open file", ferr)
+	}
+	defer f.Close()
+
 	_, ferr = f.WriteString("\nIn Interpreter.run() with input: ")
 	_, ferr = f.WriteString(hex.EncodeToString(input))
 
-	if types.IsRAA(input) {
-                if in.evm.txP != nil {
-                    txPersist = in.evm.txP
-                } else {
-                    in.evm.txP = txPersist
-                }
+	if types.SeriesDag.IsRAA(input) {
+		if in.evm.txP != nil {
+			txPersist = in.evm.txP
+		} else {
+			in.evm.txP = txPersist
+		}
 
 		if in.evm.txP != nil {
 			pending, _ := in.evm.txP.Content()
 
-			var txnList = make([]*types.RPCTransaction, 1000)
-        		var i int = 0
+			var txnList = make([]*types.Transaction, 1000)
+			var i int = 0
 
-        		for _, txs := range pending {
-                		for _, tx := range txs {
-                        		txnList[i] = newRPCPendingTransaction(tx)
-                        		i = i + 1
-                		}
-        		}
-
-        		//Slice such that length is equal to number of transactions in pending
-        		txnList = txnList[0:i]
-
-			input = types.DoRAA(input, txnList)
-		}
-        }
-
-/*
-        if len(input) >= 4 {
-            sig := hex.EncodeToString(input[0:4])
-            _, ferr = f.WriteString(", Function Signature: ")
-            _, ferr = f.WriteString(hex.EncodeToString(input[0:4]))
-            if sig == "6c58228a" || sig == "07173de5" || sig == "152227ad" || sig == "19608715"  {
-                _, ferr = f.WriteString(", RAA Requested!\n")
-
-          // Get the latest tuple from Analyzer
-                if in.evm.txP != nil {
-                    txPersist = in.evm.txP
-                } else {
-                    in.evm.txP = txPersist
-                }
-		_, ferr = f.WriteString(fmt.Sprintf("interpreter.Run -- txPersist  %T %p\n", txPersist, txPersist))
-                _, ferr = f.WriteString(fmt.Sprintf("interpreter.Run -- txP  %T %p\n", in.evm.txP, in.evm.txP))
-		var tuple [][]byte = Tuple(in.evm.txP)
-
-		_, ferr = f.WriteString("Tuple:\n")
-
-		if tuple[1] == nil {
-			_, ferr = f.WriteString(fmt.Sprintf("Tuple is empty, there are no pending transactions\n"))
-		} else {
-			_, ferr = f.WriteString(fmt.Sprintf("Address: %x\n", tuple[0]))
-			_, ferr = f.WriteString(fmt.Sprintf("Mark: %x\n", tuple[1]))
-			_, ferr = f.WriteString(fmt.Sprintf("Val: %x\n", tuple[2]))
-
-			for i := 0; i < 3; i++ {
-				for k := 0; k < 32; k++ {
-					input[(len(input)-96)+(i*32)+k] = tuple[i][k]
-				}
+			for _, txs := range pending {
+					for _, tx := range txs {
+							txnList[i] = tx
+							i = i + 1
+					}
 			}
 
-			_, ferr = f.WriteString(fmt.Sprintf("Augmented Input: %s\n", hex.EncodeToString(input)))
+			//Slice such that length is equal to number of transactions in pending
+			txnList = txnList[0:i]
 
+			input = types.SeriesDag.DoRAA(input, txnList)
 		}
-           //_, ferr = f.WriteString(Tuple(in.evm.txP))
+	}
 
-          // Add tuple to input arguments (RAA step)
-          // TODO: need to truncate the last 3x128 characters in input and substitute the encoded tuple (address, mark, value)
-          //newinput := common.fromHex(")
-            } else {
-            _, ferr = f.WriteString(", not serialized.\n")
-            }
-        }*/
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()

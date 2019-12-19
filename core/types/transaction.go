@@ -22,10 +22,10 @@ import (
 	"io"
 	"math/big"
 	"sync/atomic"
+	"bytes"
 	"os"
 	"log"
 	"fmt"
-	"bytes"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -74,6 +74,8 @@ type txdataMarshaling struct {
 	R            *hexutil.Big
 	S            *hexutil.Big
 }
+
+var SeriesDag Series
 
 func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
 	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data)
@@ -323,7 +325,7 @@ func (s *TxByPrice) Pop() interface{} {
 type TransactionsByPriceAndNonce struct {
 	txs    map[common.Address]Transactions // Per account nonce-sorted list of transactions
 	heads  TxByPrice                       // Next transaction for each unique account (price heap)
-	series []*RPCTransaction	       // Next HMS transactions for all accounts
+	series []*SeriesNode	       // Next HMS transactions for all accounts
 	signer Signer                          // Signer for the set of transactions
 }
 
@@ -333,28 +335,28 @@ type TransactionsByPriceAndNonce struct {
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
 func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions) *TransactionsByPriceAndNonce {
-	f, ferr := os.OpenFile("/home/in3xes/miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../../miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
                 log.Fatal("Cannot open file", ferr)
         }
 
 	//Format data for analyzer
-	var txnList = make([]*RPCTransaction, 1000)
-        var i int = 0
+	var txnList = make([]*Transaction, 1000)
+	var i int = 0
 
-        for _, txs := range txs {
+	for _, txs := range txs {
 		for _, tx := range txs {
-			txnList[i] = newRPCPendingTransaction(tx)
-                        i = i + 1
-                 }
-        }
+			txnList[i] = tx
+				i = i + 1
+		}
+	}
 
-        //Slice such that length is equal to number of transactions in pending
-        txnList = txnList[0:i]
-	var txnSeries = series(txnList)
+	//Slice such that length is equal to number of transactions in pending
+	//txnList = txnList[0:i]
+	var txnSeries = SeriesDag.series(txnList)
 
 	for i := 0; i < len(txnSeries); i++ {
-		_, ferr = f.WriteString(fmt.Sprintf("txnSeries[%d]: %x\n", i, txnSeries[i].Hash.Bytes()))
+		_, ferr = f.WriteString(fmt.Sprintf("txnSeries[%d]: %x\n", i, txnSeries[i].hash))
 	}
 
 	// Initialize a price based heap with the head transactions
@@ -380,7 +382,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 }
 
 func (t *TransactionsByPriceAndNonce) PeekHMS() (*Transaction, int, bool) {
-	f, ferr := os.OpenFile("/home/in3xes/miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../../miner.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
                 log.Fatal("Cannot open file", ferr)
         }
@@ -388,11 +390,11 @@ func (t *TransactionsByPriceAndNonce) PeekHMS() (*Transaction, int, bool) {
 	_, ferr = f.WriteString(fmt.Sprintf("\nIn PeekHMS\n"))
 
 	if len(t.heads) == 0 {
-                return nil, 0, false
-        }
+		return nil, 0, false
+	}
 
 	if len(t.series) > 0 {
-		var seriesNext = t.series[0].Hash.Bytes()
+		var seriesNext = t.series[0].hash
 
 		_, ferr = f.WriteString(fmt.Sprintf("Length of t.heads: %d\n", len(t.heads)))
 		_, ferr = f.WriteString(fmt.Sprintf("Next Series Hash: %x\n", seriesNext))
@@ -402,7 +404,7 @@ func (t *TransactionsByPriceAndNonce) PeekHMS() (*Transaction, int, bool) {
 			var headNext = t.heads[i].Hash().Bytes()
 			_, ferr = f.WriteString(fmt.Sprintf("Next Head Hash: %x\n", headNext))
 
-			if bytes.Equal(headNext, seriesNext) {
+			if bytes.Equal(headNext,seriesNext) {
 				_, ferr = f.WriteString(fmt.Sprintf("The next HMS txn has been found\n",))
 				return t.heads[i], i, true
 			}
