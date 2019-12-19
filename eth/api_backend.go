@@ -132,7 +132,7 @@ func (b *EthAPIBackend) GetTd(blockHash common.Hash) *big.Int {
 }
 
 func (b *EthAPIBackend) GetEVM(ctx context.Context, msg core.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error) {
-	f, ferr := os.OpenFile("/home/bitnami/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, ferr := os.OpenFile("../../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if ferr != nil {
             log.Fatal("Cannot open file", ferr)
         }

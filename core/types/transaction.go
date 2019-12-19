@@ -340,24 +340,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
                 log.Fatal("Cannot open file", ferr)
         }
 
-	//Format data for analyzer
-	var txnList = make([]*Transaction, 1000)
-	var i int = 0
-
-	for _, txs := range txs {
-		for _, tx := range txs {
-			txnList[i] = tx
-				i = i + 1
-		}
-	}
-
-	//Slice such that length is equal to number of transactions in pending
-	//txnList = txnList[0:i]
-	var txnSeries = SeriesDag.series(txnList)
-
-	for i := 0; i < len(txnSeries); i++ {
-		_, ferr = f.WriteString(fmt.Sprintf("txnSeries[%d]: %x\n", i, txnSeries[i].hash))
-	}
+	defer f.Close()
 
 	// Initialize a price based heap with the head transactions
 	heads := make(TxByPrice, 0, len(txs))
@@ -376,7 +359,6 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	return &TransactionsByPriceAndNonce{
 		txs:    txs,
 		heads:  heads,
-		series: txnSeries,
 		signer: signer,
 	}
 }

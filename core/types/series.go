@@ -41,8 +41,8 @@ type SeriesNode struct {
     //Pointer to previous transactions
     prevTxn                                             *SeriesNode
     //Node depth
-    depth                                               int
-    hash                                                []byte
+    depth                                               int32
+    hash						[]byte
 }
 
 //Constructor for SeriesNode Objects
@@ -51,12 +51,12 @@ func NewSeriesNode() SeriesNode {
 		fromAddress:	nil,
 		inputAddress:	nil,
 		functionName:	nil,
-		mark:			nil,
-		val:			nil,
-		oldMark:		nil,
-		nextTxn:		make([]*SeriesNode, 100, 100),
-        prevTxn:		nil,
-        depth:          -1,
+		mark:		nil,
+		val:		nil,
+		oldMark:	nil,
+		nextTxn:	make([]*SeriesNode, 100, 100),
+	        prevTxn:	nil,
+	        depth:          -1,
 	}
 	return n
 }
@@ -67,15 +67,14 @@ func MakeHead() SeriesNode {
 		fromAddress:	nil,
 		inputAddress:	common.FromHex("0x0"),
 		functionName:	nil,
-		mark:			common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000"),
-		val:			common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000"),
-		oldMark:		nil,
-		nextTxn:		make([]*SeriesNode, 100, 100),
-        prevTxn:		nil,
-        depth:          0,
-        hash:           common.FromHex("0x0"),
+		mark:		common.FromHex("0x7261614d61726b00000000000000000000000000000000000000000000000000"),
+		val:		common.FromHex("0x72616156616c7565000000000000000000000000000000000000000000000000"),
+		oldMark:	nil,
+		nextTxn:	make([]*SeriesNode, 100, 100),
+		prevTxn:	nil,
+	        depth:          0,
+	        hash:           common.FromHex("0x0"),
     }
-    
     return n
 }
 
@@ -96,6 +95,7 @@ func (s *Series) parseTxPool(txns []*Transaction, tid int, num_threads int) {
     interval := len(txns)/num_threads
     start_index := interval * tid
     end_index := start_index+interval
+    s.RawPool[tid] = s.RawPool[tid][:0]
 
     if tid == num_threads - 1 {
 	    end_index = len(txns)
@@ -138,6 +138,7 @@ func (s *Series) parseTxPool(txns []*Transaction, tid int, num_threads int) {
 /*Insert should add a SeriesNode to the series at the appropriate
  *location in the tree
  */
+
 func (s *Series) InsertTxn(n *SeriesNode) bool {
 
     //parent := s.Head.findParent(n)
@@ -151,22 +152,48 @@ func (s *Series) InsertTxn(n *SeriesNode) bool {
     for {
         for i, _ := range parent.nextTxn {
             item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])))
-            if item != nil && bytes.Equal((*SeriesNode)(item).hash,n.hash) {
+            if item != nil && bytes.Equal((*SeriesNode)(item).hash, n.hash) {
                 fmt.Println("Returning after dupe txn")
                 return false
             }
             if item == nil {
                 ret := atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&parent.nextTxn[i])), item, unsafe.Pointer(n))
-
                 if ret {
+                    parent_depth := atomic.LoadInt32(&parent.depth)
+                    if parent_depth != -1 {
+                        s.finishInserting(n, parent_depth+1)
+                    }
                     return true;
                 }
             }
         }
     }
 
-    return false;
+    return false
 }
+
+func (s *Series) finishInserting(n *SeriesNode, d int32) {
+    leaf := true
+    depth := atomic.LoadInt32(&n.depth)
+    if depth == -1 {
+        atomic.StoreInt32(&n.depth, d)
+        for i, _ := range n.nextTxn {
+            item := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&n.nextTxn[i])))
+            if (item != nil) {
+                leaf = false
+                s.finishInserting((*SeriesNode)(item), d+1)
+            }
+        }
+
+        if leaf {
+            tail := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&s.Tail)))
+            if tail == nil || (*SeriesNode)(tail).depth < d {
+                atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&s.Tail)), tail, unsafe.Pointer(n))
+            }
+        }
+    }
+}
+
 
 func (s *Series) findParent(new_node *SeriesNode) (*SeriesNode) {
     node := s.findParentFromPool(new_node)
@@ -286,7 +313,8 @@ func (s *Series) DoRAA(input []byte, txnList []*Transaction) []byte {
 		log.Fatal("Cannot open file", ferr)
 	}
 
-    //Parse the txpool
+	_, ferr = f.WriteString(fmt.Sprintf("txnList size : %d\n", len(txnList)))
+
 	s.parseTxPool(txnList, 0, 1)
 
 	for i := 0; i < len(s.RawPool[0]); i++ {
