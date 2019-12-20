@@ -22,10 +22,10 @@ import (
 	"io"
 	"math/big"
 	"sync/atomic"
+	"bytes"
 	"os"
 	"log"
 	"fmt"
-	"bytes"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -74,6 +74,8 @@ type txdataMarshaling struct {
 	R            *hexutil.Big
 	S            *hexutil.Big
 }
+
+var SeriesDag Series
 
 func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
 	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data)
@@ -323,7 +325,7 @@ func (s *TxByPrice) Pop() interface{} {
 type TransactionsByPriceAndNonce struct {
 	txs    map[common.Address]Transactions // Per account nonce-sorted list of transactions
 	heads  TxByPrice                       // Next transaction for each unique account (price heap)
-	series []*RPCTransaction	       // Next HMS transactions for all accounts
+	series []*SeriesNode	       // Next HMS transactions for all accounts
 	signer Signer                          // Signer for the set of transactions
 }
 
@@ -338,29 +340,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
                 log.Fatal("Cannot open file", ferr)
         }
 
-	_, ferr = f.WriteString(fmt.Sprintf("\nInit new series in NewTransactionsByPriceAndNonce\n"))
-
-	//Format data for analyzer
-	var txnList = make([]*RPCTransaction, 1000)
-        var i int = 0
-
-        for _, txs := range txs {
-		for _, tx := range txs {
-			txnList[i] = newRPCPendingTransaction(tx)
-                        i = i + 1
-                 }
-        }
-
-        //Slice such that length is equal to number of transactions in pending
-        txnList = txnList[0:i]
-
-	_, ferr = f.WriteString(fmt.Sprintf("List of transactions length: %d\n", len(txnList)))
-
-	var txnSeries = series(txnList)
-
-	for i := 0; i < len(txnSeries); i++ {
-		_, ferr = f.WriteString(fmt.Sprintf("txnSeries[%d]: %x\n", i, txnSeries[i].Hash.Bytes()))
-	}
+	defer f.Close()
 
 	// Initialize a price based heap with the head transactions
 	heads := make(TxByPrice, 0, len(txs))

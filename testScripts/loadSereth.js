@@ -5,7 +5,7 @@
 console.log('Start miner to write new version of contract to chain');
 miner.start()
 console.log('Load and unlock');
-loadScript('../Sereth/testScripts/Sereth.sol.js');
+loadScript('../sereth/testScripts/Sereth.sol.js');
 eth.defaultAccount=bob
 personal.unlockAccount(bob, "foobar123", 10000);
 console.log('Deploy contract');

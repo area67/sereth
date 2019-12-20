@@ -97,7 +97,11 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	context := NewEVMContext(msg, header, bc, author)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
+<<<<<<< HEAD
         f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+=======
+        f, ferr := os.OpenFile("/home/in3xes/interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+>>>>>>> 4a62000582144e50b2dd66f685fae100fdc41a66
         if ferr != nil {
             log.Fatal("Cannot open file", ferr)
         }

@@ -138,7 +138,10 @@ do
             do
                 sleep $retryInterval
                 AMV=`curl -s http://localhost:8101 -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_call","params":[{"from":"'$aliceAddress'","to":"'$contractAddress'","data":"'$getFuncInput'"}, "latest"], "id":1011}'`
+<<<<<<< HEAD
                 echo $AMV
+=======
+>>>>>>> 4a62000582144e50b2dd66f685fae100fdc41a66
             done
 
             inAddr=$inAddrRU

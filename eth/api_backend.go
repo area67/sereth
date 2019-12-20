@@ -132,7 +132,11 @@ func (b *EthAPIBackend) GetTd(blockHash common.Hash) *big.Int {
 }
 
 func (b *EthAPIBackend) GetEVM(ctx context.Context, msg core.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error) {
+<<<<<<< HEAD
 	f, ferr := os.OpenFile("../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+=======
+	f, ferr := os.OpenFile("../../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+>>>>>>> 4a62000582144e50b2dd66f685fae100fdc41a66
         if ferr != nil {
             log.Fatal("Cannot open file", ferr)
         }
