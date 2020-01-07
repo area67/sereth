@@ -1,9 +1,14 @@
 # Read-Uncommitted Transactions for Smart Contract Performance
-## [ICDCS 2019](https://theory.utdallas.edu/ICDCS2019/) the 39th IEEE International Conference on Distributed Computing Systems
 
 ## Sereth
 
 Sereth is a fork of Geth, the Golang implementation of the Ethereum protocol.  Sereth clients may be run interoperably with standard Geth clients.   Sereth provides improved transaction throughput for use cases with frequent state changes.
+
+Source code for lock-free Hash-Mark-Set:
+https://github.com/area67/sereth/blob/lock-free/core/types/series.go 
+
+This file is configured for the built in buy-set smart-contract:
+https://github.com/area67/sereth/blob/lock-free/testScripts/Sereth.sol
 
 
 ## Building the source
