@@ -201,6 +201,12 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
+	//Create DAG during eth setup
+	types.SeriesDag = types.NewSeries(1)
+	sNode := types.MakeHead()
+	types.SeriesDag.Head =  &sNode
+
+
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit
 	checkpoint := config.Checkpoint

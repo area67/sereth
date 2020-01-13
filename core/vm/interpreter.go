@@ -20,7 +20,11 @@ import (
 	"fmt"
 	"hash"
 	"sync/atomic"
+	"os"
+	//"log"
+        "encoding/hex"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/log"
@@ -85,6 +89,8 @@ type EVMInterpreter struct {
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
 
+var txPersist ContentFetcher
+
 // NewEVMInterpreter returns a new instance of the Interpreter.
 func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 	// We use the STOP instruction whether to see
@@ -131,6 +137,48 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	f, ferr := os.OpenFile("../../interpreter.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if ferr != nil {
+		log.Error("Cannot open file", ferr)
+	}
+	defer f.Close()
+
+	_, ferr = f.WriteString("\nIn Interpreter.run() with input: ")
+	_, ferr = f.WriteString(hex.EncodeToString(input))
+
+	if types.SeriesDag.IsRAA(input) {
+		if in.evm.txP != nil {
+			txPersist = in.evm.txP
+		} else {
+			in.evm.txP = txPersist
+		}
+
+		if in.evm.txP != nil {
+			pending, _ := in.evm.txP.Content()
+
+			var txnList = make([]*types.Transaction, 1000)
+			var i int = 0
+
+			for _, txs := range pending {
+					for _, tx := range txs {
+							txnList[i] = tx
+							i = i + 1
+					}
+			}
+
+			//Slice such that length is equal to number of transactions in pending
+			txnList = txnList[0:i]
+			_, ferr = f.WriteString("\nGGGGGGGGGGG : In Interpreter.run() with input: ")
+			_, ferr = f.WriteString(hex.EncodeToString(input))
+
+			input = types.SeriesDag.DoRAA(input, txnList)
+			_, ferr = f.WriteString("\nFFFFFFFFFFF : In Interpreter.run() with input: ")
+			_, ferr = f.WriteString(hex.EncodeToString(input))
+
+		}
+	}
+
+
 	if in.intPool == nil {
 		in.intPool = poolOfIntPools.get()
 		defer func() {

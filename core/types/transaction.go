@@ -71,6 +71,8 @@ type txdataMarshaling struct {
 	S            *hexutil.Big
 }
 
+var SeriesDag Series
+
 func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
 	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data)
 }
