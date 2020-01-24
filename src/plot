@@ -1,0 +1,12 @@
+set title "Performance of sequential HMS"
+set xlabel "TxPool Size"
+set ylabel "Execution Time (seconds)"
+
+#set grid
+
+set style line 1 lt 1 lw 1.5 pt 1 ps 2 lc "red"
+
+set term png
+set output "results.png"
+
+plot "data.out" using 1:2 smooth unique title 'algorithm' with linespoints ls 1, \
