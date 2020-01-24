@@ -1,6 +1,9 @@
 To Execute:
 	From src directory:
-	$ go run *.go <number_of_threads>
+	$ go run *.go <number_of_threads> <LF/SEQHMS>
+
+	LF - Executes the lock-free algorithm
+	SEQHMS - Executes a sequential implementation of the algorithm
 
 Dependecies:
 	golang.org/x/crypto/sha3 ($go get golang.org/x/crypto/sha3)

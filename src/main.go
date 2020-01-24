@@ -32,15 +32,15 @@ func main() {
 
 	if alg == "LF" {
 		testLFHMS()
-	} else if alg == "BL" {
-		testBLHMS()
+	} else if alg == "SEQ" {
+		testSEQHMS()
 	} else {
 		fmt.Println("Error: no valid algorithm selected")
 		return
 	}
 }
 
-func testBLHMS() {
+func testSEQHMS() {
 	f, _ := os.OpenFile("BLHMS.out", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
 
